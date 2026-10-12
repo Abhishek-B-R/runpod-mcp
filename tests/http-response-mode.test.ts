@@ -11,12 +11,13 @@ import {
   requestLogSampleRate,
   summarizeRpc,
 } from '#src/http';
+import { responseHoldingTools } from '#src/specgen/server';
 
 // ============== Response mode: JSON for the handshake, SSE for tool calls ==============
 // The CDN compresses application/json and never text/event-stream, so every
-// request that is not a tools/call answers as JSON. tools/call keeps SSE because
-// clients read it under their long stream timeout and some tools hold a response
-// for longer than the short JSON request timeout.
+// request answers as JSON except a call to a tool that holds its response open:
+// clients read SSE under their long stream timeout but JSON under the short
+// request timeout, and those tools can legitimately run past it.
 
 const init = (
   clientInfo: Record<string, unknown> = { name: 'probe', version: '0' }
@@ -80,9 +81,27 @@ describe('prefersJsonResponse', () => {
     assert.equal(prefers([initialized]), true);
   });
 
-  it('tools/call, alone or anywhere in a batch → SSE', () => {
-    assert.equal(prefers(toolsCall('list-pods')), false);
-    assert.equal(prefers([toolsList, toolsCall('x')]), false);
+  it('a call to an ordinary tool → JSON, so its result compresses', () => {
+    assert.equal(prefers(toolsCall('list-pods')), true);
+    assert.equal(prefers(toolsCall('no-such-tool')), true);
+  });
+
+  it('a call to a response-holding tool, alone or in a batch → SSE', () => {
+    for (const name of responseHoldingTools) {
+      assert.equal(prefers(toolsCall(name)), false, name);
+    }
+    assert.equal(prefers([toolsList, toolsCall('stream-job')]), false);
+  });
+
+  it('the response-holding set is exactly the long-poll and stream tools', () => {
+    assert.deepEqual([...responseHoldingTools].sort(), [
+      'deploy-hub-repo',
+      'get-job-status',
+      'runsync-endpoint',
+      'stream-job',
+      'stream-pod-logs',
+      'stream-worker-logs',
+    ]);
   });
 
   it("no parsed messages keeps the SDK's SSE default", () => {
@@ -281,11 +300,23 @@ describe('handleMcpRequest — response mode', () => {
     assert.equal(parsed.result, undefined);
   });
 
-  it('tools/call stays on text/event-stream', async () => {
-    // An unknown tool errors inside the server, so no outbound call is made and
-    // the transport still has to deliver the error on the stream.
+  it('tools/call for an ordinary tool answers application/json', async () => {
+    // An unknown tool errors inside the server, so no outbound call is made.
     const { req, res, written, finished } = fakeReqRes(
       toolsCall('no-such-tool')
+    );
+    await handleMcpRequest(req, res, { verifyCredential: validCredential });
+    await finished;
+    assert.equal(written.statusCode, 200);
+    assert.equal(written.headers?.['Content-Type'], 'application/json');
+    assert.match(written.chunks.join(''), /no-such-tool/);
+  });
+
+  it('tools/call for a response-holding tool stays on text/event-stream', async () => {
+    // Missing required arguments fail the argument gate before any upstream
+    // call, so the stream carries an error result without touching the API.
+    const { req, res, written, finished } = fakeReqRes(
+      toolsCall('get-job-status')
     );
     await handleMcpRequest(req, res, { verifyCredential: validCredential });
     await finished;
@@ -293,7 +324,7 @@ describe('handleMcpRequest — response mode', () => {
     assert.equal(written.headers?.['Content-Type'], 'text/event-stream');
     const stream = written.chunks.join('');
     assert.match(stream, /^event: message\ndata: /m);
-    assert.match(stream, /no-such-tool/);
+    assert.match(stream, /"id":3/);
   });
 });
 

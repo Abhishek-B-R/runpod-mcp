@@ -464,6 +464,7 @@ export const runEndpoint: CuratedTool = {
 
 export const runsyncEndpoint: CuratedTool = {
   name: 'runsync-endpoint',
+  holdsResponse: true,
   annotations: write,
   description:
     'Submit a synchronous job to a Serverless endpoint and wait for the result. Best for fast tasks: if the job outlives the wait, the response returns a job ID and a non-terminal status (IN_QUEUE or IN_PROGRESS) to poll with get-job-status. Max payload 20 MB; results expire after 1 minute. The wait parameter extends the server-side wait' +
@@ -527,6 +528,7 @@ export const runsyncEndpoint: CuratedTool = {
 
 export const getJobStatus: CuratedTool = {
   name: 'get-job-status',
+  holdsResponse: true,
   annotations: readOnly,
   description:
     'Check the status of a Serverless job. Returns the current status and output when complete. Job statuses: IN_QUEUE, IN_PROGRESS, COMPLETED, FAILED, CANCELLED, TIMED_OUT. Pass `wait` (milliseconds, up to ' +
@@ -588,6 +590,7 @@ export const getJobStatus: CuratedTool = {
 
 export const streamJob: CuratedTool = {
   name: 'stream-job',
+  holdsResponse: true,
   annotations: readOnly,
   description: `Retrieve streaming output from a Serverless job. The worker must support streaming output. Polls /stream/{jobId} and collects chunks until the status is COMPLETED, FAILED, CANCELLED, or TIMED_OUT, for up to ${formatBudget(STREAM_BUDGET_MS)}. If the budget expires first, returns the chunks collected so far with pollingTimedOut: true — call stream-job again to resume where it left off, or get-job-status to check without streaming.`,
   inputSchema: {

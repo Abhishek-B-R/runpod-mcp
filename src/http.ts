@@ -5,7 +5,7 @@ import {
   JSONRPCMessageSchema,
   type JSONRPCMessage,
 } from '@modelcontextprotocol/sdk/types.js';
-import { createSpecgenServer } from './specgen/server.js';
+import { createSpecgenServer, responseHoldingTools } from './specgen/server.js';
 import { createToolContext as createSpecgenContext } from './specgen/context.js';
 import { callerId } from './specgen/ops.js';
 import { analyticsCallerId, captureLoopBlocked } from './specgen/analytics.js';
@@ -283,17 +283,18 @@ function earlyCredentialCheckSkip(req: IncomingMessage): SkipReason | null {
   return null;
 }
 
-const isToolCall = (message: JSONRPCMessage): boolean =>
-  CallToolRequestSchema.safeParse(message).success;
+const callsResponseHoldingTool = (message: JSONRPCMessage): boolean => {
+  const call = CallToolRequestSchema.safeParse(message);
+  return call.success && responseHoldingTools.has(call.data.params.name);
+};
 
-// The CDN compresses application/json but never text/event-stream, and tools/list
-// (~65 KB raw, ~13 KB gzipped) is sent on every client handshake. tools/call stays
-// on SSE: clients read an SSE body under their long stream timeout but a JSON body
-// under the short request timeout (30s in the Python SDK), and get-job-status /
-// runsync-endpoint legitimately hold a response longer than that. No parsed
-// messages keeps SSE, the SDK's default.
+// The CDN compresses application/json but never text/event-stream, so every
+// request answers as JSON except a call to a tool that holds its response open
+// (CuratedTool.holdsResponse): clients read an SSE body under their long stream
+// timeout but a JSON body under the short request timeout (30s in the Python
+// SDK). No parsed messages keeps SSE, the SDK's default.
 export function prefersJsonResponse(messages: JSONRPCMessage[]): boolean {
-  return messages.length > 0 && !messages.some(isToolCall);
+  return messages.length > 0 && !messages.some(callsResponseHoldingTool);
 }
 
 const DEFAULT_REQUEST_LOG_SAMPLE_RATE = 0.1;
