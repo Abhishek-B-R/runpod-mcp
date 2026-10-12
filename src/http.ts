@@ -5,9 +5,10 @@ import { SERVER_VERSION } from './server.js';
 import { sanitizeUaToken } from './_shared/tracking.js';
 import {
   createCredentialChecker,
-  type CredentialChecker,
   type CredentialCheckerHandle,
 } from './_shared/credential-check.js';
+import type { HandleMcpRequestOptions, RpcSummary } from './types.js';
+export type { HandleMcpRequestOptions, RpcSummary } from './types.js';
 import {
   sdkBase,
   serverlessBase,
@@ -314,11 +315,6 @@ export function requestLogSampleRate(
   return Math.min(1, Math.max(0, parsed));
 }
 
-export interface RpcSummary {
-  rpc?: string;
-  client?: string;
-}
-
 // `initialize`, `tools/list`, `tools/call:list-pods`, or a comma-joined list for
 // a batch. `initialize` also carries the client's self-reported name/version.
 export function summarizeRpc(body: unknown): RpcSummary {
@@ -445,12 +441,7 @@ function logCredentialCheck(
 export async function handleMcpRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  opts: {
-    serverVersion?: string;
-    // Test seams — production uses the shared default checker.
-    verifyCredential?: CredentialChecker;
-    invalidateCredential?: (token: string) => void;
-  } = {}
+  opts: HandleMcpRequestOptions = {}
 ): Promise<void> {
   const bearerToken = extractBearerToken(req);
   const requestLog = startRequestLog(req, res, bearerToken);
