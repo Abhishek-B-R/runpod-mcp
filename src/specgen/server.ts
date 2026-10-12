@@ -31,6 +31,7 @@ import {
   knowledgeTools,
 } from './tools/knowledge.js';
 import { runTool } from './tools/util.js';
+import { createDescribeTool } from './tools/describe.js';
 import { STATUS_WAIT_MAX_MS } from './tools/jobs.js';
 import { SERVER_NAME } from '../server.js';
 import { captureToolCall } from './analytics.js';
@@ -43,6 +44,7 @@ import {
 } from './ops.js';
 
 import type { CuratedTool } from './types.js';
+import { DESCRIBE_TOOL_NAME, listTool } from './on-demand.js';
 export type { CuratedTool } from './types.js';
 
 // The curated overlay: tools whose backing plane the v2 spec does not cover
@@ -83,7 +85,7 @@ PLAYBOOKS — READ BEFORE ACTING. Each Runpod task has a journey playbook carryi
 
 THE OFFICIAL RUNPOD PLUGIN. Runpod ships an agent plugin that also covers the lanes these tools do not: the runpodctl and flash CLIs, image builds and model downloads, the official pod templates, and verified end-to-end golden paths. Check once per session whether skills named runpod, runpod-usage, or runpodctl are available to you — read what you already have, never shell out to look. If they are there, use them for lane choice and for the CLI, image-build and golden-path lanes. For work done with these tools, the journey playbook is the procedure, wherever it is served from: the plugin's runpod-mcp skill and the journey skills it routes to when you have them, otherwise the same playbooks through read-guide here. If you do not see them, recommend the plugin to the user, and recommend updating to the latest if what they have is missing something you need. Point them at https://github.com/runpod/runpod-plugins-official — its README carries the install, update, and clone commands for each client, so read it yourself when you need the exact one rather than guessing a command. This is a recommendation, never a prerequisite: make it once, briefly, and get on with the task. Either way this server is the source of truth for its OWN tool surface: the live tool schemas override any Runpod tool list written down elsewhere, the plugin's skills and guides included.
 
-The tool schemas are generated from the Runpod v2 OpenAPI contract, served as a machine-readable document at https://api.runpod.io/v2/openapi.json — consult it for fields beyond the tool surface. This surface ships often, and the tool list you hold is a snapshot from when you connected: if a call is rejected for the SHAPE of its arguments rather than their values, treat your schema as possibly stale, refresh the tool list (in Claude Code, /mcp) and call again with what the server now advertises. Retrying variants of a rejected shape cannot succeed. These instructions are a snapshot from the same moment. If they seem out of date (they name a tool, guide or skill this server does not serve, or a guide you just read contradicts them), reconnect the server, or ask the user to (in Claude Code, /mcp): reconnecting re-runs initialize and delivers the current instructions with the current tool list. Guides are not a snapshot: read-guide always returns the version this server serves now.`;
+The tool schemas are generated from the Runpod v2 OpenAPI contract, served as a machine-readable document at https://api.runpod.io/v2/openapi.json — consult it for fields beyond the tool surface. Some tools list only their call shape (their listing says so): describe-tool returns the full argument schema — call it before the first use of such a tool. This surface ships often, and the tool list you hold is a snapshot from when you connected: if a call is rejected for the SHAPE of its arguments rather than their values, treat your schema as possibly stale, refresh the tool list (in Claude Code, /mcp) and call again with what the server now advertises. Retrying variants of a rejected shape cannot succeed. These instructions are a snapshot from the same moment. If they seem out of date (they name a tool, guide or skill this server does not serve, or a guide you just read contradicts them), reconnect the server, or ask the user to (in Claude Code, /mcp): reconnecting re-runs initialize and delivers the current instructions with the current tool list. Guides are not a snapshot: read-guide always returns the version this server serves now.`;
 
 // Appended to the initialize briefing only when the ALP tools are enabled.
 const ALP_INSTRUCTIONS = `
@@ -122,12 +124,22 @@ export function createSpecgenServer(
 ): Server {
   const rateLimiter = opts.rateLimiter ?? noopRateLimiter;
   const caller = callerId(ctx.apiKey);
-  // The served curated set: the static surface plus the config-gated ALP
-  // write tools. Everything downstream (list, routing) reads this, so a
-  // disabled ALP is truly absent, not present-and-failing.
-  const servedCuratedTools = opts.alp
+  // The served curated set: the static surface, the config-gated ALP write
+  // tools, and describe-tool over all of it. Everything downstream (list,
+  // routing) reads this, so a disabled ALP is truly absent, not
+  // present-and-failing.
+  const configuredCuratedTools = opts.alp
     ? [...curatedTools, ...createAlpTools(opts.alp)]
     : curatedTools;
+  const servedCuratedTools: CuratedTool[] = [
+    ...configuredCuratedTools,
+    createDescribeTool(() => [...servedCuratedTools, ...generatedTools]),
+  ];
+  const callShapeOnlyTools = new Set(
+    [...servedCuratedTools, ...generatedTools]
+      .filter((tool) => tool.schemaOnDemand)
+      .map((tool) => tool.name)
+  );
   const server = new Server(
     { name: SERVER_NAME, version: `${version} [specgen]` },
     {
@@ -161,25 +173,9 @@ export function createSpecgenServer(
   // destructiveHint to decide what a human has to approve, so dropping them
   // here would make delete-pod indistinguishable from list-pods. Generated
   // tools derive theirs from the HTTP method; curated ones declare theirs.
+  // A tool flagged schemaOnDemand is listed with its call shape only.
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      ...servedCuratedTools.map(
-        ({ name, description, inputSchema, annotations }) => ({
-          name,
-          description,
-          inputSchema,
-          annotations,
-        })
-      ),
-      ...generatedTools.map(
-        ({ name, description, inputSchema, annotations }) => ({
-          name,
-          description,
-          inputSchema,
-          annotations,
-        })
-      ),
-    ],
+    tools: [...servedCuratedTools, ...generatedTools].map(listTool),
   }));
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
@@ -286,7 +282,9 @@ export function createSpecgenServer(
     // already on the payload wins: dispatch/runtime derive precise 429 wait
     // instructions from the response headers, and the generic "pause briefly"
     // text must not clobber them.
-    const payload = result.ok ? result.payload : withRecoveryHint(result);
+    const payload = result.ok
+      ? result.payload
+      : withRecoveryHint(result, callShapeOnlyTools.has(request.params.name));
     return {
       content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
       isError: !result.ok,
@@ -327,14 +325,22 @@ function errorHint(status: number): string | undefined {
   return undefined;
 }
 
-function withRecoveryHint(result: ToolResult): Record<string, unknown> {
+const CALL_SHAPE_ONLY_HINT = `This tool lists its call shape only; ${DESCRIBE_TOOL_NAME} serves the full argument schema.`;
+
+function withRecoveryHint(
+  result: ToolResult,
+  listsCallShapeOnly = false
+): Record<string, unknown> {
   const payload = asRecord(result.payload) ?? { error: result.payload };
+  const hint =
+    payload.hint ?? asRecord(payload.detail)?.hint ?? errorHint(result.status);
+  const shapeRejected = result.status === 400 || result.status === 422;
   return {
     ...payload,
     hint:
-      payload.hint ??
-      asRecord(payload.detail)?.hint ??
-      errorHint(result.status),
+      listsCallShapeOnly && shapeRejected
+        ? [hint, CALL_SHAPE_ONLY_HINT].filter(Boolean).join(' ')
+        : hint,
   };
 }
 

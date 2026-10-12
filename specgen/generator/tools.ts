@@ -16,6 +16,9 @@ export interface GeneratorConfig {
   propertyDescriptions?: Record<string, string>;
   /** operationId -> hints for tools whose HTTP method understates what they do. */
   annotations?: Record<string, Partial<ToolAnnotations>>;
+  /** operationIds listed with their call shape only; describe-tool serves the
+   *  full schema (src/specgen/on-demand.ts). */
+  schemaOnDemand?: string[];
 }
 
 interface Parameter {
@@ -421,6 +424,9 @@ function buildTool(
       ...annotationsFor(method.toUpperCase()),
       ...config.annotations?.[op.operationId],
     },
+    ...(config.schemaOnDemand?.includes(op.operationId)
+      ? { schemaOnDemand: true as const }
+      : {}),
     inputSchema: {
       type: 'object',
       properties,
@@ -451,6 +457,7 @@ export function generateTools(
   const names = new Set<string>();
   const unmatchedExclusions = new Set(Object.keys(config.exclude ?? {}));
   const unmatchedAnnotations = new Set(Object.keys(config.annotations ?? {}));
+  const unmatchedOnDemand = new Set(config.schemaOnDemand ?? []);
   for (const [path, pathItem] of Object.entries(spec.paths)) {
     for (const method of HTTP_METHODS) {
       const op = pathItem[method];
@@ -460,6 +467,7 @@ export function generateTools(
         continue;
       }
       unmatchedAnnotations.delete(op.operationId);
+      unmatchedOnDemand.delete(op.operationId);
       const tool = buildTool(
         path,
         method,
@@ -483,6 +491,10 @@ export function generateTools(
   if (unmatchedAnnotations.size)
     throw new Error(
       `Annotated operations missing from spec: ${[...unmatchedAnnotations].sort().join(', ')}`
+    );
+  if (unmatchedOnDemand.size)
+    throw new Error(
+      `schemaOnDemand operations missing from spec: ${[...unmatchedOnDemand].sort().join(', ')}`
     );
   const unmatchedOverrides = Object.keys(context.overrides).filter(
     (address) => !context.usedOverrides.has(address)

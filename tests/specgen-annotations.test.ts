@@ -10,8 +10,14 @@ import { createSpecgenServer, curatedTools } from '#src/specgen/server';
 import { createToolContext } from '#src/specgen/context';
 import { generatedTools } from '#src/specgen/generated/tools.gen';
 import { knowledgeTools } from '#src/specgen/tools/knowledge';
+import { DESCRIBE_TOOL_NAME } from '#src/specgen/on-demand';
 
-const knowledgeToolNames = new Set(knowledgeTools.map((tool) => tool.name));
+// Tools that read nothing outside the server: the bundled plugin guides and
+// the server's own tool table.
+const localToolNames = new Set([
+  ...knowledgeTools.map((tool) => tool.name),
+  DESCRIBE_TOOL_NAME,
+]);
 
 async function listTools() {
   const server = createSpecgenServer(
@@ -49,8 +55,7 @@ test('every tool reaches the client with a complete annotation set', async () =>
         `${tool.name}.${hint} must be a boolean`
       );
     }
-    // The knowledge tools read the bundled plugin package, not the Runpod API.
-    assert.equal(annotations.openWorldHint, !knowledgeToolNames.has(tool.name));
+    assert.equal(annotations.openWorldHint, !localToolNames.has(tool.name));
     if (annotations.readOnlyHint)
       assert.equal(
         annotations.destructiveHint,

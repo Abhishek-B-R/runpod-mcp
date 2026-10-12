@@ -25,6 +25,8 @@ export interface GeneratedTool {
   params: GeneratedToolParam[];
   hasBody: boolean;
   annotations: ToolAnnotations;
+  /** Listed with its call shape only; describe-tool serves the full schema. */
+  schemaOnDemand?: true;
   inputSchema: Record<string, unknown>;
 }
 
@@ -44,6 +46,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {
@@ -338,6 +341,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {
@@ -1243,6 +1247,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {
@@ -1300,6 +1305,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {
@@ -3582,6 +3588,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {
@@ -4018,6 +4025,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {
@@ -4235,6 +4243,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {
@@ -4341,6 +4350,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {

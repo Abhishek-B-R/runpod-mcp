@@ -12,6 +12,7 @@ import { Ajv } from 'ajv';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { generatedTools } from '#src/specgen/generated/tools.gen';
+import { listTool, type ListableTool } from '#src/specgen/on-demand';
 import { curatedTools, createSpecgenServer } from '#src/specgen/server';
 import { createToolContext } from '#src/specgen/context';
 
@@ -352,28 +353,16 @@ test('generation freshness check rejects stale schemas and config without writin
 });
 
 // Every byte below is sent on every client handshake and sits in the agent's
-// context for the whole session. The budgets pin today's surface so a spec
-// pull or a new tool cannot regrow it unnoticed; raise one only with the
-// reason in the PR.
-const GENERATED_SURFACE_BUDGET_BYTES = 102_000;
+// context for the whole session. The budgets pin today's surface as listed
+// (schemaOnDemand tools count at their call shape) so a spec pull or a new
+// tool cannot regrow it unnoticed; raise one only with the reason in the PR.
+const GENERATED_SURFACE_BUDGET_BYTES = 64_000;
 const CURATED_SURFACE_BUDGET_BYTES = 30_000;
 const ARGUMENT_DESCRIPTION_CAP_BYTES = 400;
 
-type Served = {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  annotations: unknown;
-};
-const served = (tools: Served[]) =>
-  tools.map(({ name, description, inputSchema, annotations }) => ({
-    name,
-    description,
-    inputSchema,
-    annotations,
-  }));
+type Served = ListableTool;
 const servedBytes = (tools: Served[]) =>
-  Buffer.byteLength(JSON.stringify(served(tools)));
+  Buffer.byteLength(JSON.stringify(tools.map(listTool)));
 
 function longArgumentDescriptions(tools: Served[]): string[] {
   const offenders: string[] = [];
