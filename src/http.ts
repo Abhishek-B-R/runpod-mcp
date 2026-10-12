@@ -1,4 +1,10 @@
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import {
+  CallToolRequestSchema,
+  InitializeRequestSchema,
+  JSONRPCMessageSchema,
+  type JSONRPCMessage,
+} from '@modelcontextprotocol/sdk/types.js';
 import { createSpecgenServer } from './specgen/server.js';
 import { createToolContext as createSpecgenContext } from './specgen/context.js';
 import { callerId } from './specgen/ops.js';
@@ -34,8 +40,7 @@ function extractBearerToken(req: IncomingMessage): string | null {
 // its calls. Checked case-insensitively; absence means opted in (the capture
 // itself is still a no-op unless the deployment sets POSTHOG_API_KEY).
 function analyticsOptedOut(req: IncomingMessage): boolean {
-  const raw = req.headers['x-runpod-analytics'];
-  const value = (Array.isArray(raw) ? raw[0] : raw)?.trim().toLowerCase();
+  const value = header(req, 'x-runpod-analytics')?.trim().toLowerCase();
   return value === 'off' || value === '0' || value === 'false';
 }
 
@@ -163,32 +168,25 @@ function credentialCheckMayBeWrongEnvironment(env = process.env): boolean {
   return restMoved !== graphqlMoved;
 }
 
-// Requires `method`, so a JSON-RPC *response* ({jsonrpc, id, result}) does not
-// qualify — a client posting one invokes no tool, so there is no credential to
-// check. Erring toward "skip" only loses a 401 we did not need.
-function looksLikeMcpMessage(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null) return false;
-  const msg = value as { jsonrpc?: unknown; method?: unknown };
-  return msg.jsonrpc === '2.0' && typeof msg.method === 'string';
+// The one place a request body is validated. The SDK parses each element with
+// this same schema and answers 400 when any fails, so an element dropped here
+// never reaches a tool; everything past this point works on typed messages. An
+// absent or host-unparsed body (undefined) yields no messages.
+export function parseMcpMessages(body: unknown): JSONRPCMessage[] {
+  const elements = Array.isArray(body) ? body : [body];
+  return elements.flatMap((element) => {
+    const parsed = JSONRPCMessageSchema.safeParse(element);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
-// On a host that pre-parses bodies, `undefined` means the platform declined to
-// parse this content type (Vercel returns undefined for everything outside
-// json/text/urlencoded/octet-stream), so the body is unverifiable and must not be
-// treated as MCP — otherwise a caller reopens the credential oracle by changing
-// one header. On a host that never parses (plain node:http), there is nothing to
-// inspect without consuming the stream the SDK needs, so the gate is skipped.
-// Either way `undefined` is NOT checkable; only an actual MCP body is.
-//
-// `some`, not `every`: a JSON-RPC batch may legitimately mix a response element
-// (no `method`) with a request that invokes a tool. `every` let one response
-// element mark the whole batch un-checkable while the SDK still ran the tool
-// call — a one-element opt-out of the pre-flight. If any element invokes a
-// method, the batch must be checked. `some` on an empty array is false, so an
-// empty batch (which invokes nothing) is correctly not checkable.
+// A response element ({jsonrpc, id, result}) invokes nothing, so it needs no
+// credential. `some`, not `every`: one response element in a batch must not opt
+// the tool call beside it out of the pre-flight.
+const invokesMethod = (message: JSONRPCMessage): boolean => 'method' in message;
+
 export function bodyIsCheckable(body: unknown): boolean {
-  const messages = Array.isArray(body) ? body : [body];
-  return messages.some(looksLikeMcpMessage);
+  return parseMcpMessages(body).some(invokesMethod);
 }
 
 // The gate must be at least as permissive as the SDK's own content-type check,
@@ -280,22 +278,17 @@ function earlyCredentialCheckSkip(req: IncomingMessage): SkipReason | null {
   return null;
 }
 
+const isToolCall = (message: JSONRPCMessage): boolean =>
+  CallToolRequestSchema.safeParse(message).success;
+
 // The CDN compresses application/json but never text/event-stream, and tools/list
 // (~65 KB raw, ~13 KB gzipped) is sent on every client handshake. tools/call stays
 // on SSE: clients read an SSE body under their long stream timeout but a JSON body
 // under the short request timeout (30s in the Python SDK), and get-job-status /
-// runsync-endpoint legitimately hold a response longer than that. An unknown body
-// (not pre-parsed) keeps SSE, the SDK's default.
-export function prefersJsonResponse(body: unknown): boolean {
-  if (typeof body !== 'object' || body === null) return false;
-  const messages = Array.isArray(body) ? body : [body];
-  if (messages.length === 0) return false;
-  return messages.every(
-    (m) =>
-      typeof m === 'object' &&
-      m !== null &&
-      (m as { method?: unknown }).method !== 'tools/call'
-  );
+// runsync-endpoint legitimately hold a response longer than that. No parsed
+// messages keeps SSE, the SDK's default.
+export function prefersJsonResponse(messages: JSONRPCMessage[]): boolean {
+  return messages.length > 0 && !messages.some(isToolCall);
 }
 
 const DEFAULT_REQUEST_LOG_SAMPLE_RATE = 0.1;
@@ -316,47 +309,33 @@ export function requestLogSampleRate(
 
 // `initialize`, `tools/list`, `tools/call:list-pods`, or a comma-joined list for
 // a batch. `initialize` also carries the client's self-reported name/version.
-export function summarizeRpc(body: unknown): RpcSummary {
-  if (typeof body !== 'object' || body === null) return {};
-  const messages = Array.isArray(body) ? body : [body];
-  const rpcs: string[] = [];
-  let client: string | undefined;
-  for (const m of messages) {
-    if (typeof m !== 'object' || m === null) continue;
-    const { method, params } = m as {
-      method?: unknown;
-      params?: {
-        name?: unknown;
-        clientInfo?: { name?: unknown; version?: unknown };
-      };
-    };
-    if (typeof method !== 'string') {
-      rpcs.push('response');
-      continue;
-    }
-    const tool =
-      method === 'tools/call' && typeof params?.name === 'string'
-        ? `:${params.name}`
-        : '';
-    rpcs.push(`${method}${tool}`);
-    const info = params?.clientInfo;
-    if (method === 'initialize' && typeof info?.name === 'string') {
-      const version =
-        typeof info.version === 'string' ? info.version : 'unknown';
-      client = `${info.name}/${version}`;
-    }
-  }
-  return { rpc: rpcs.length > 0 ? rpcs.join(',') : undefined, client };
+export function summarizeRpc(messages: JSONRPCMessage[]): RpcSummary {
+  const rpc = messages.map((message) => {
+    const call = CallToolRequestSchema.safeParse(message);
+    if (call.success) return `tools/call:${call.data.params.name}`;
+    return 'method' in message ? message.method : 'response';
+  });
+  const init = messages
+    .map((message) => InitializeRequestSchema.safeParse(message))
+    .find((result) => result.success);
+  const client = init?.success
+    ? `${init.data.params.clientInfo.name}/${init.data.params.clientInfo.version}`
+    : undefined;
+  return { rpc: rpc.length > 0 ? rpc.join(',') : undefined, client };
+}
+
+function header(req: IncomingMessage, name: string): string | undefined {
+  const value = req.headers[name];
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function clientAddress(req: IncomingMessage): string | undefined {
-  const real = req.headers['x-real-ip'];
-  if (typeof real === 'string' && real) return real;
-  const forwarded = req.headers['x-forwarded-for'];
-  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)
-    ?.split(',')[0]
-    .trim();
-  return first || req.socket?.remoteAddress || undefined;
+  return (
+    header(req, 'x-real-ip') ||
+    header(req, 'x-forwarded-for')?.split(',')[0].trim() ||
+    req.socket?.remoteAddress ||
+    undefined
+  );
 }
 
 interface RequestLog {
@@ -377,7 +356,7 @@ function startRequestLog(
   const startedAt = Date.now();
   let summary: RpcSummary = {};
   const address = clientAddress(req);
-  const userAgent = req.headers['user-agent'];
+  const userAgent = header(req, 'user-agent');
   let emitted = false;
   const emit = (): void => {
     if (emitted) return;
@@ -389,7 +368,7 @@ function startRequestLog(
       durationMs: Date.now() - startedAt,
       rpc: summary.rpc,
       client: summary.client,
-      ua: typeof userAgent === 'string' ? userAgent.slice(0, 160) : undefined,
+      ua: userAgent?.slice(0, 160),
       caller: callerId(bearerToken ?? undefined),
       ip: address ? callerId(address) : undefined,
       sampleRate,
@@ -492,11 +471,12 @@ export async function handleMcpRequest(
     }
     body = read;
   }
+  const messages = parseMcpMessages(body);
   // Before the gate, so a rejected or skipped request still logs what it asked.
-  requestLog.note(summarizeRpc(body));
+  requestLog.note(summarizeRpc(messages));
   if (early) {
     logCredentialCheck(early);
-  } else if (!bodyIsCheckable(body)) {
+  } else if (!messages.some(invokesMethod)) {
     // Absent, unparseable, or not an MCP message — nothing to check, and
     // checking it anyway would reopen the credential oracle.
     logCredentialCheck('skip_not_mcp_body');
@@ -584,7 +564,7 @@ export async function handleMcpRequest(
 
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // stateless — no session persistence
-    enableJsonResponse: prefersJsonResponse(body),
+    enableJsonResponse: prefersJsonResponse(messages),
   });
 
   // This per-request server/transport pair is single-use; dispose it when the

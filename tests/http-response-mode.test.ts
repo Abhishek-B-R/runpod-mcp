@@ -4,7 +4,9 @@ import { EventEmitter } from 'node:events';
 import { IncomingMessage, ServerResponse } from 'node:http';
 
 import {
+  bodyIsCheckable,
   handleMcpRequest,
+  parseMcpMessages,
   prefersJsonResponse,
   requestLogSampleRate,
   summarizeRpc,
@@ -16,15 +18,13 @@ import {
 // clients read it under their long stream timeout and some tools hold a response
 // for longer than the short JSON request timeout.
 
-const init = (clientInfo?: { name: string; version?: string }) => ({
+const init = (
+  clientInfo: Record<string, unknown> = { name: 'probe', version: '0' }
+) => ({
   jsonrpc: '2.0',
   id: 1,
   method: 'initialize',
-  params: {
-    protocolVersion: '2025-06-18',
-    capabilities: {},
-    clientInfo: clientInfo ?? { name: 'probe', version: '0' },
-  },
+  params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo },
 });
 const toolsList = { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} };
 const toolsCall = (name: string) => ({
@@ -34,66 +34,101 @@ const toolsCall = (name: string) => ({
   params: { name, arguments: {} },
 });
 const initialized = { jsonrpc: '2.0', method: 'notifications/initialized' };
+const response = { jsonrpc: '2.0', id: 1, result: {} };
+
+describe('parseMcpMessages', () => {
+  it('keeps the elements the SDK would accept and drops the rest', () => {
+    assert.equal(parseMcpMessages(toolsList).length, 1);
+    assert.equal(parseMcpMessages([init(), initialized, response]).length, 3);
+    // The SDK answers 400 for a batch with a junk element, so dropping it here
+    // changes nothing a tool could observe; the valid request still gates.
+    assert.equal(parseMcpMessages([toolsCall('x'), 'junk']).length, 1);
+    assert.equal(bodyIsCheckable([toolsCall('x'), 'junk']), true);
+  });
+
+  it('absent, host-unparsed, or non-MCP bodies yield nothing', () => {
+    for (const body of [
+      undefined,
+      null,
+      'junk',
+      42,
+      {},
+      [],
+      { jsonrpc: '1.0', method: 'x' },
+    ]) {
+      assert.deepEqual(
+        parseMcpMessages(body),
+        [],
+        `for ${JSON.stringify(body)}`
+      );
+    }
+  });
+});
 
 describe('prefersJsonResponse', () => {
-  it('handshake and listing requests → JSON', () => {
-    assert.equal(prefersJsonResponse(init()), true);
-    assert.equal(prefersJsonResponse(toolsList), true);
-    assert.equal(
-      prefersJsonResponse({ jsonrpc: '2.0', id: 9, method: 'ping' }),
-      true
-    );
-    assert.equal(prefersJsonResponse([init(), initialized]), true);
+  const prefers = (body: unknown) =>
+    prefersJsonResponse(parseMcpMessages(body));
+
+  it('handshake, listing and ping requests → JSON', () => {
+    assert.equal(prefers(init()), true);
+    assert.equal(prefers(toolsList), true);
+    assert.equal(prefers({ jsonrpc: '2.0', id: 9, method: 'ping' }), true);
+    assert.equal(prefers([init(), initialized]), true);
+  });
+
+  it('a notification-only batch → JSON (the SDK answers it with an empty 202)', () => {
+    assert.equal(prefers([initialized]), true);
   });
 
   it('tools/call, alone or anywhere in a batch → SSE', () => {
-    assert.equal(prefersJsonResponse(toolsCall('list-pods')), false);
-    assert.equal(prefersJsonResponse([toolsList, toolsCall('x')]), false);
+    assert.equal(prefers(toolsCall('list-pods')), false);
+    assert.equal(prefers([toolsList, toolsCall('x')]), false);
   });
 
-  it("a body the handler never parsed keeps the SDK's SSE default", () => {
-    assert.equal(prefersJsonResponse(undefined), false);
-    assert.equal(prefersJsonResponse(null), false);
-    assert.equal(prefersJsonResponse('junk'), false);
-    assert.equal(prefersJsonResponse([]), false);
-    assert.equal(prefersJsonResponse([toolsList, 'junk']), false);
+  it("no parsed messages keeps the SDK's SSE default", () => {
+    assert.equal(prefers(undefined), false);
+    assert.equal(prefers('junk'), false);
+    assert.equal(prefers([]), false);
   });
 });
 
 describe('summarizeRpc', () => {
+  const summarize = (body: unknown) => summarizeRpc(parseMcpMessages(body));
+
   it('initialize → method plus the client name/version', () => {
-    assert.deepEqual(
-      summarizeRpc(init({ name: 'claude-code', version: '2.1' })),
-      {
-        rpc: 'initialize',
-        client: 'claude-code/2.1',
-      }
-    );
-    assert.deepEqual(summarizeRpc(init({ name: 'cursor' })), {
+    assert.deepEqual(summarize(init({ name: 'claude-code', version: '2.1' })), {
       rpc: 'initialize',
-      client: 'cursor/unknown',
+      client: 'claude-code/2.1',
+    });
+  });
+
+  it('an initialize the SDK would reject reports no client', () => {
+    // clientInfo.version is required by the schema; a client omitting it never
+    // completes the handshake, so there is no identity worth logging.
+    assert.deepEqual(summarize(init({ name: 'cursor' })), {
+      rpc: 'initialize',
+      client: undefined,
     });
   });
 
   it('tools/call carries the tool name; a batch is comma-joined', () => {
-    assert.deepEqual(summarizeRpc(toolsCall('list-pods')), {
+    assert.deepEqual(summarize(toolsCall('list-pods')), {
       rpc: 'tools/call:list-pods',
       client: undefined,
     });
     assert.equal(
-      summarizeRpc([init(), initialized, toolsList]).rpc,
+      summarize([init(), initialized, toolsList]).rpc,
       'initialize,notifications/initialized,tools/list'
     );
   });
 
-  it('response elements and non-MCP bodies', () => {
-    assert.equal(
-      summarizeRpc({ jsonrpc: '2.0', id: 1, result: {} }).rpc,
-      'response'
-    );
-    assert.deepEqual(summarizeRpc(undefined), {});
-    assert.deepEqual(summarizeRpc('junk'), {});
-    assert.deepEqual(summarizeRpc([]), { rpc: undefined, client: undefined });
+  it('response elements and empty bodies', () => {
+    assert.equal(summarize(response).rpc, 'response');
+    assert.deepEqual(summarize(undefined), {
+      rpc: undefined,
+      client: undefined,
+    });
+    assert.deepEqual(summarize('junk'), { rpc: undefined, client: undefined });
   });
 });
 
@@ -229,6 +264,21 @@ describe('handleMcpRequest — response mode', () => {
     };
     assert.equal(parsed.id, 1);
     assert.ok(parsed.result.serverInfo.name);
+  });
+
+  it('a batch with a junk element is refused whole, not served in part', async () => {
+    // parseMcpMessages drops the element on the strength of the SDK rejecting
+    // the whole batch; this pins the SDK's half of that bargain.
+    const { req, res, written, finished } = fakeReqRes([toolsList, 'junk']);
+    await handleMcpRequest(req, res, { verifyCredential: validCredential });
+    await finished;
+    assert.equal(written.statusCode, 400);
+    const parsed = JSON.parse(written.chunks.join('')) as {
+      error?: { code: number };
+      result?: unknown;
+    };
+    assert.equal(parsed.error?.code, -32700);
+    assert.equal(parsed.result, undefined);
   });
 
   it('tools/call stays on text/event-stream', async () => {
