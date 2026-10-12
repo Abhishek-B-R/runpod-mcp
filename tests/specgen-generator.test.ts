@@ -22,7 +22,7 @@ function bodySpec(schema: unknown): SpecDocument {
   };
 }
 
-test('generation normalizes prose while preserving literal values and property names', () => {
+test('generation drops spec field prose while preserving literal values and property names', () => {
   const literal = { description: 'RunPod', $ref: '#/components/schemas/Fake' };
   const body = {
     type: 'object',
@@ -46,17 +46,111 @@ test('generation normalizes prose while preserving literal values and property n
   assert.deepEqual(
     (tool.inputSchema.properties as Record<string, unknown>).body,
     {
-      ...body,
-      description: 'A Runpod resource',
+      type: 'object',
       properties: {
-        ...body.properties,
-        description: { type: 'string', description: 'Runpod text' },
-        example: { type: 'object', description: 'Runpod data' },
+        RunPod: body.properties.RunPod,
+        description: { type: 'string' },
+        example: { type: 'object' },
       },
+      examples: [literal],
+      default: literal,
+      const: literal,
     }
   );
   assert.equal(tool.inputSchema.$defs, undefined);
   assert.deepEqual(body, original, 'generation must not mutate its input');
+});
+
+test('field descriptions are served only where configured, keyed through composition and items', () => {
+  const spec = bodySpec({ $ref: '#/components/schemas/Input' });
+  spec.components = {
+    schemas: {
+      Input: {
+        description: 'spec prose',
+        allOf: [
+          {
+            properties: {
+              tags: {
+                type: 'array',
+                items: {
+                  properties: { key: { type: 'string', description: 'x' } },
+                },
+              },
+            },
+          },
+          { properties: { mount: { $ref: '#/components/schemas/Mount' } } },
+        ],
+      },
+      Mount: { type: 'object', description: 'spec prose' },
+    },
+  };
+  const [tool] = generateTools(spec, {
+    fieldDescriptions: {
+      Input: 'A RunPod input.',
+      'Input.tags.key': 'Tag key.',
+      Mount: 'One mount.',
+    },
+  });
+  assert.deepEqual(tool.inputSchema.$defs, {
+    Input: {
+      description: 'A Runpod input.',
+      allOf: [
+        {
+          properties: {
+            tags: {
+              type: 'array',
+              items: {
+                properties: {
+                  key: { type: 'string', description: 'Tag key.' },
+                },
+              },
+            },
+          },
+        },
+        { properties: { mount: { $ref: '#/$defs/Mount' } } },
+      ],
+    },
+    Mount: { type: 'object', description: 'One mount.' },
+  });
+  assert.throws(
+    () =>
+      generateTools(spec, {
+        fieldDescriptions: { 'Input.mount.path': 'x', 'Gone.field': 'y' },
+      }),
+    /Field descriptions match no schema field: Gone.field, Input.mount.path/
+  );
+});
+
+test('parameter descriptions are served by name across operations and reject stale names', () => {
+  const spec: SpecDocument = {
+    paths: {
+      '/example': {
+        get: {
+          operationId: 'listExample',
+          parameters: [
+            {
+              name: 'cursor',
+              in: 'query',
+              description: 'spec prose',
+              schema: { type: 'string', description: 'schema prose' },
+            },
+            { name: 'limit', in: 'query', description: 'spec prose' },
+          ],
+        },
+      },
+    },
+  };
+  const [tool] = generateTools(spec, {
+    parameterDescriptions: { cursor: 'The previous nextCursor.' },
+  });
+  assert.deepEqual(tool.inputSchema.properties, {
+    cursor: { type: 'string', description: 'The previous nextCursor.' },
+    limit: {},
+  });
+  assert.throws(
+    () => generateTools(spec, { parameterDescriptions: { page: 'x' } }),
+    /Parameter descriptions match no served parameter: page/
+  );
 });
 
 test('references are rewritten structurally and collect transitive definitions once', () => {

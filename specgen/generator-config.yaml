@@ -37,6 +37,110 @@ annotations:
   updateSshKeys:
     destructiveHint: true
 
+# Field descriptions are opt-in. The generator drops every schema-field and
+# parameter description from the spec and serves only the ones below: each
+# tools/list carries every schema, and most spec prose restates the field
+# name or the API docs. Keep an entry only where the model would otherwise
+# make a wrong call (wrong id kind, wrong format, a silent no-op, lost data),
+# in one line, naming tools rather than HTTP routes. Types, enums, defaults
+# and bounds stay in the schema either way. The generator rejects keys that
+# match nothing.
+#
+# `Component` or `Component.field.sub`; nesting looks through allOf/anyOf/
+# oneOf and array items. A $ref'd field is keyed by its target component.
+fieldDescriptions:
+  BaseContainerConfig.args: >-
+    Container command as one string (treated as CMD), or
+    {"entrypoint":[...],"cmd":[...]}.
+  BaseContainerConfig.disk: Container disk in GB, wiped on restart.
+  BaseContainerConfig.ports: Exposed ports as port/protocol, e.g. 8888/http or 22/tcp.
+  ContainerConfig.registry: Registry credential id for a private image (list-registries).
+  Mounts: At most one of persistent or network.
+  TemplateMounts: Persistent only; network is rejected.
+  PersistentMount: Host-local storage, lost on host failure. Not allowed on CPU pods.
+  PersistentMount.size: GB, minimum 10.
+  NetworkMount.volumeId: Network volume id; must be in the pod's data center.
+  BaseGpuConfig.id: GPU type id from list-gpu-types, e.g. "NVIDIA GeForce RTX 4090".
+  BaseCpuConfig.id: CPU flavor id from list-cpu-types.
+  BaseCpuConfig.vcpuCount: Power of two, valid for the flavor.
+  CreateGpuConfig.allowedCudaVersions: &cudaSet >-
+    Exact CUDA versions as major.minor. Exclusive with minCudaVersion.
+  CreateGpuConfig.minCudaVersion: &cudaFloor >-
+    CUDA floor as major.minor, compared numerically (12.11 > 12.2). Exclusive
+    with allowedCudaVersions.
+  CreateEndpointGpuConfig.allowedCudaVersions: *cudaSet
+  CreateEndpointGpuConfig.minCudaVersion: *cudaFloor
+  UpdateEndpointGpuConfig.allowedCudaVersions: >-
+    Exact CUDA versions as major.minor; [] clears. Exclusive with
+    minCudaVersion.
+  UpdateEndpointGpuConfig.minCudaVersion: >-
+    CUDA floor as major.minor; "" clears. Exclusive with allowedCudaVersions.
+  BaseEndpointGpuConfig.pools: >-
+    Serverless pool ids from list-gpu-types `pool` (e.g. ADA_24), not GPU type
+    ids.
+  BaseEndpointGpuConfig.excludedTypes: >-
+    GPU type ids to subtract from pools. On update, sending pools without this
+    clears it.
+  EndpointType: >-
+    QUEUE runs jobs through the queue. LOAD_BALANCER sends HTTP straight to
+    workers (env PORT, PORT_HEALTH, HEALTH_CHECK_PATH).
+  EndpointScaling: >-
+    QUEUE_DELAY (QUEUE endpoints only) or REQUEST_COUNT (required for
+    LOAD_BALANCER).
+  EndpointWorkers.idleTimeout: >-
+    Seconds before idle workers scale down. Rejected for a QUEUE endpoint
+    scaling on REQUEST_COUNT.
+  CreatePodRequest: Exactly one of gpu or cpu. image is required unless templateId is set.
+  CreatePodRequest.templateId: &templateCreate >-
+    Template id to start from. Body fields override it; env merges per key.
+  CreateEndpointRequest.templateId: *templateCreate
+  UpdatePodRequest.templateId: &templateUpdate >-
+    Applies a template's container settings once; the merged env replaces the
+    current env.
+  UpdateEndpointRequest.templateId: *templateUpdate
+  CreateClusterRequest.templateId: >-
+    Pod template for every member pod; the only private-image path. Exclusive
+    with inline container fields.
+  CreatePodRequest.startSsh: &startSsh >-
+    Installs your registered SSH keys (update-ssh-keys); does nothing if none
+    are registered.
+  CreateTemplateRequest.startSsh: *startSsh
+  CreateClusterRequest.startSsh: *startSsh
+  CreatePodRequest.startJupyter: &startJupyter Starts JupyterLab; expose 8888/http to reach it.
+  CreateTemplateRequest.startJupyter: *startJupyter
+  CreatePodRequest.globalNetworking: >-
+    Private IP across data centers. Needs an NVIDIA GPU and an eligible data
+    center (list-data-centers globalNetwork).
+  UpdatePodRequest.globalNetworking: Takes effect on the next start, not live.
+  UpdatePodRequest.locked: Locked pods cannot be stopped or reset.
+  ClusterCompute.gpuTypeId: GPU type id from list-gpu-types.
+  CreateTemplateRequest.allowedCudaVersions: Exact CUDA versions as major.minor.
+  UpdateTemplateRequest.allowedCudaVersions: Exact CUDA versions as major.minor; [] clears.
+  CreateNetworkVolumeRequest.size: GB.
+  CreateNetworkVolumeRequest.type: Storage tier; immutable after creation.
+  UpdateNetworkVolumeRequest.size: GB; cannot be reduced.
+  UpdateSshKeysRequest.keys: >-
+    The complete key set, replacing all registered keys; [] removes them all.
+    Each entry is an authorized_keys line.
+  CreateSecretRequest.name: >-
+    Referenced from env as {{ RUNPOD_SECRET_<name> }}. Immutable; may not
+    start with RUNPOD.
+  CreateSecretRequest.value: Write-only; never returned.
+
+parameterDescriptions:
+  product: Required with include=AVAILABILITY, rejected without it.
+  count: Needs include=AVAILABILITY.
+  cloud: Needs include=AVAILABILITY.
+  vcpuCount: Power of two. Needs include=AVAILABILITY.
+  countryCodes: Uppercase ISO country codes, e.g. FR,DE. Needs include=AVAILABILITY.
+  cudaVersions: Exact major.minor versions. Needs include=AVAILABILITY.
+  minCudaVersion: CUDA floor, e.g. 12 or 12.1. Needs include=AVAILABILITY.
+  cursor: The previous response's pagination.nextCursor.
+  startTime: RFC 3339. Defaults to 30 days ago.
+  endTime: RFC 3339, exclusive. Defaults to now.
+  lastN: Last N buckets ending now. Exclusive with startTime/endTime.
+  buildId: From list-endpoint-builds.
+
 # operationId -> description overrides; default is the spec summary+description.
 # The mutation-tool overrides carry the critical gotchas inline so the
 # BARE-CLIENT path (no skills installed) still sees them at tool-choice time.

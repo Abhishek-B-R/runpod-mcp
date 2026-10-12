@@ -113,6 +113,7 @@ specgen/generator-config.yaml       api.runpod.io/v2/openapi.json)
   our judgment:
   - skip these operations (each skip needs a written reason)
   - override these descriptions ("BILLABLE: state the price first")
+  - serve only these field descriptions (the spec's are dropped)
         │
         │   pnpm generate:tools        ← run BY A HUMAN, occasionally
         ▼

@@ -113,6 +113,23 @@ test('offline handshake: keyless server lists 57 tools; a call 401s as a tool re
   await client.close();
 });
 
+// Every session downloads the whole tools/list before the user types anything,
+// and some clients send no Accept-Encoding, so these bytes go out raw. Raise
+// the budget deliberately, not as a side effect of a spec re-vendor.
+const TOOLS_LIST_BUDGET_BYTES = 100_000;
+
+test(`tools/list stays under ${TOOLS_LIST_BUDGET_BYTES} bytes`, async () => {
+  const server = createSpecgenServer(createToolContext(), 'test');
+  const client = new Client({ name: 'test', version: '1' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(st), client.connect(ct)]);
+  const bytes = JSON.stringify(await client.listTools()).length;
+  assert.ok(
+    bytes <= TOOLS_LIST_BUDGET_BYTES,
+    `tools/list is ${bytes} bytes, over the ${TOOLS_LIST_BUDGET_BYTES} budget`
+  );
+});
+
 test('dispatch 400s a missing required argument instead of calling the API', async () => {
   const { dispatchGeneratedTool } = await import('../src/specgen/dispatch.js');
   const tool = generatedTools.find((t) => t.name === 'get-gpu-type')!;

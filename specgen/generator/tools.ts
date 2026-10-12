@@ -9,6 +9,10 @@ export interface GeneratorConfig {
   exclude?: Record<string, { replacedBy?: string; reason: string }>;
   rename?: Record<string, string>;
   descriptions?: Record<string, string>;
+  /** `Component` or `Component.field.sub` -> the description that field serves. */
+  fieldDescriptions?: Record<string, string>;
+  /** Query/path parameter name -> its description, across every operation. */
+  parameterDescriptions?: Record<string, string>;
   /** operationId -> hints for tools whose HTTP method understates what they do. */
   annotations?: Record<string, Partial<ToolAnnotations>>;
 }
@@ -104,11 +108,14 @@ function rewriteRef(ref: string): string {
     : ref;
 }
 
+// Field prose is opt-in: the spec's descriptions are dropped here, and only the
+// config's fieldDescriptions/parameterDescriptions are served (see
+// describeFields). Every tools/list carries every schema, so prose the model
+// does not need is paid for by every session.
 function normalizeSchema(node: unknown): unknown {
   return mapSchema(node, (schema) => {
-    for (const key of ['description', 'title']) {
-      if (typeof schema[key] === 'string') schema[key] = prose(schema[key]);
-    }
+    delete schema.description;
+    if (typeof schema.title === 'string') schema.title = prose(schema.title);
     for (const key of ['$ref', '$dynamicRef']) {
       if (typeof schema[key] === 'string')
         schema[key] = rewriteRef(schema[key]);
@@ -129,6 +136,52 @@ function normalizeSchema(node: unknown): unknown {
     }
     return schema;
   });
+}
+
+const fieldWrappers = [
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'items',
+  'additionalProperties',
+];
+
+// The schema nodes a field key names. `Component` is the component itself;
+// each further segment follows `properties`, looking through composition and
+// array/map wrappers so the key reads like the payload, not the schema. A
+// property that is a $ref is keyed by its target component instead.
+function fieldNodes(node: unknown, path: string[]): Record<string, unknown>[] {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return [];
+  const schema = node as Record<string, unknown>;
+  if (path.length === 0) return [schema];
+  const [name, ...rest] = path;
+  const properties = (schema.properties ?? {}) as Record<string, unknown>;
+  const direct = Object.hasOwn(properties, name)
+    ? fieldNodes(properties[name], rest)
+    : [];
+  const wrapped = fieldWrappers
+    .flatMap((key) => [schema[key]].flat())
+    .flatMap((child) => fieldNodes(child, path));
+  return [...direct, ...wrapped];
+}
+
+// Writes the configured descriptions into the (freshly normalized) defs. A key
+// that names no field is an error, so a spec rename cannot silently drop one.
+function describeFields(
+  defs: Record<string, unknown>,
+  descriptions: Record<string, string> = {}
+): void {
+  const unmatched: string[] = [];
+  for (const [key, description] of Object.entries(descriptions)) {
+    const [component, ...path] = key.split('.');
+    const nodes = fieldNodes(defs[component], path);
+    if (!nodes.length) unmatched.push(key);
+    for (const node of nodes) node.description = prose(description);
+  }
+  if (unmatched.length)
+    throw new Error(
+      `Field descriptions match no schema field: ${unmatched.sort().join(', ')}`
+    );
 }
 
 function pointerName(ref: string, prefix: string): string {
@@ -254,10 +307,11 @@ function buildTool(
       throw new Error(`Missing parameter name: ${op.operationId}`);
     if (Object.hasOwn(properties, param.name))
       throw new Error(`Ambiguous parameter ${param.name}: ${op.operationId}`);
-    properties[param.name] = normalizeSchema({
-      ...(param.schema as Record<string, unknown>),
-      ...(param.description ? { description: param.description } : {}),
-    });
+    const description = config.parameterDescriptions?.[param.name];
+    properties[param.name] = {
+      ...(normalizeSchema(param.schema) as Record<string, unknown>),
+      ...(description ? { description: prose(description) } : {}),
+    };
     if (param.required || param.in === 'path') required.push(param.name);
     params.push({
       name: param.name,
@@ -324,6 +378,7 @@ export function generateTools(
       normalizeSchema(schema),
     ])
   );
+  describeFields(defs, config.fieldDescriptions);
   const tools: GeneratedTool[] = [];
   const names = new Set<string>();
   const unmatchedExclusions = new Set(Object.keys(config.exclude ?? {}));
@@ -351,6 +406,16 @@ export function generateTools(
   if (unmatchedAnnotations.size)
     throw new Error(
       `Annotated operations missing from spec: ${[...unmatchedAnnotations].sort().join(', ')}`
+    );
+  const served = new Set(
+    tools.flatMap((tool) => tool.params.map((p) => p.name))
+  );
+  const unmatchedParameters = Object.keys(
+    config.parameterDescriptions ?? {}
+  ).filter((name) => !served.has(name));
+  if (unmatchedParameters.length)
+    throw new Error(
+      `Parameter descriptions match no served parameter: ${unmatchedParameters.sort().join(', ')}`
     );
   return tools.sort((a, b) => a.name.localeCompare(b.name));
 }
