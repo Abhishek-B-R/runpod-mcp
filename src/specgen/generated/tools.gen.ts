@@ -55,13 +55,11 @@ export const generatedTools: GeneratedTool[] = [
       $defs: {
         BaseContainerConfig: {
           type: 'object',
-          description:
-            'Container configuration universal to every containerized resource. Compose ContainerConfig instead unless the resource cannot support a direct registry credential (clusters — there the registry credential arrives via a pod template, see CreateClusterRequest.templateId).\n',
           properties: {
             args: {
               type: 'string',
               description:
-                'The container\'s command, as a single raw string. This is the field `entrypoint` and `cmd` encode into, exposed in its stored form.\n\nTwo shapes are accepted. A bare shell string is treated as CMD and split into arguments, which is what the console\'s "Container start command" field writes. A JSON object of the form `{"entrypoint":[...],"cmd":[...]}` sets either or both explicitly.\n\nResponses always return both representations: `args` exactly as stored, plus the deconstructed `entrypoint` and `cmd`. Supplying `args` together with `entrypoint` or `cmd` is allowed only when they describe the same command, so a read-modify-write client can send back everything it received. Send `""` to clear, omit to leave unchanged.\n',
+                'The container\'s command as one raw string: a bare shell string is treated as CMD and split into arguments; a JSON object `{"entrypoint":[...],"cmd":[...]}` sets either or both. Send `""` to clear; omit to leave unchanged.',
               examples: [
                 '--model meta-llama/Llama-3-8B --max-model-len 8192',
                 '{"entrypoint":["/bin/bash","-c"],"cmd":["python -u main.py"]}',
@@ -74,7 +72,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                'Container CMD in exec form. When the image defines an ENTRYPOINT, this is the argument list passed to it. Encoded into the `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n',
+                'Container CMD in exec form: when the image defines an ENTRYPOINT, the argument list passed to it. Encoded into `args`; supply both only when they describe the same command. Send `[]` to clear; omit to leave unchanged.',
               examples: [
                 ['--model', 'meta-llama/Llama-3-8B', '--max-model-len', '8192'],
               ],
@@ -85,7 +83,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n",
+                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.",
               examples: [['/bin/bash', '-c']],
             },
             disk: {
@@ -167,7 +165,7 @@ export const generatedTools: GeneratedTool[] = [
               type: 'object',
               required: ['name', 'type', 'compute'],
               description:
-                'Request body for creating a cluster. `compute` defines the\nhomogeneous pod shape; the container configuration (image, env, ports,\n…) applies to every pod. Pass `templateId` to provision every member\npod from a pod template instead of inline container fields — the\ntemplate also supplies the container registry credential, the only\nprivate-image path for clusters (a bare `registry` property on this\nbody is rejected).\n',
+                'Request body for creating a cluster. `compute` defines the homogeneous pod shape; the container configuration (image, env, ports, …) applies to every pod.',
               properties: {
                 compute: {
                   $ref: '#/$defs/ClusterCompute',
@@ -184,7 +182,7 @@ export const generatedTools: GeneratedTool[] = [
                   type: 'string',
                   minLength: 1,
                   description:
-                    'ID of a pod template to provision every member pod from. The\ntemplate supplies the container settings (image, args, disk,\nenv, ports) and the container registry credential for private\nimages — the only private-image path for clusters. Mutually\nexclusive with `image`, `args`, `entrypoint`, `cmd`, `disk`,\n`env`, `ports`, and `mounts` (rejected with 400). The cluster\nretains the link: the `template` response field is set. Must be\na non-serverless pod template accessible to the caller.\n',
+                    'ID of a pod template to provision every member pod from: it supplies the container settings (image, args, disk, env, ports) and the registry credential for private images — the only private-image path for clusters. Mutually exclusive with the inline container fields (`image`, `args`, `entrypoint`, `cmd`, `disk`, `env`, `ports`, `mounts`). Must be a non-serverless template you can access.',
                   examples: ['30zmvf89kd'],
                 },
                 dataCenterIds: {
@@ -193,7 +191,7 @@ export const generatedTools: GeneratedTool[] = [
                     type: 'string',
                   },
                   description:
-                    'Preferred data centers for placement. Omit or pass an empty\narray to let the scheduler choose. A cluster is always placed\nwithin a single data center.\n',
+                    'Preferred data centers for placement. Omit or pass an empty array to let the scheduler choose. A cluster is always placed within a single data center.',
                   example: ['US-TX-3'],
                 },
                 mounts: {
@@ -220,7 +218,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'object',
           additionalProperties: false,
           description:
-            'Storage mounts attached to a pod. At-most-one of `persistent` or\n`network` may be set today (mutually exclusive, enforced at the\nhandler with 400 if both are present). The `network` field is an\narray for forward compatibility with eventual multi-network-volume\nsupport, but `maxItems` is 1 today.\n\nPATCH semantics:\n- Omitting `mounts` or sending `{}` leaves the existing mount\n  unchanged.\n- An explicit `network: []` is rejected with 400 (clearing mounts\n  is not supported).\n- Mount kind is fixed at create — a PATCH that introduces a kind\n  not present at create (persistent on a network pod, network on\n  a persistent pod, or any mount on a previously-mountless pod)\n  is rejected with 400.\n- The `volumeId` of a network mount is immutable; a PATCH that\n  names a different `volumeId` is rejected with 400.\n- Partial mounts are not supported — every mount entry must\n  include the full schema (`size` + `path` for persistent,\n  `volumeId` + `path` for network). Missing required fields → 422.\n',
+            "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
           properties: {
             persistent: {
               $ref: '#/$defs/PersistentMount',
@@ -239,7 +237,7 @@ export const generatedTools: GeneratedTool[] = [
           required: ['volumeId', 'path'],
           additionalProperties: false,
           description:
-            'Reference to a NetworkVolume. Custom paths are honored at runtime on\nboth GPU and CPU pods. The underlying `volumeId` is immutable\npost-create; the mount `path` may be changed via PATCH.\n',
+            'Reference to a NetworkVolume. Custom paths are honored at runtime on both GPU and CPU pods. The underlying `volumeId` is immutable post-create; the mount `path` may be changed via PATCH.',
           properties: {
             volumeId: {
               type: 'string',
@@ -260,7 +258,7 @@ export const generatedTools: GeneratedTool[] = [
           required: ['size', 'path'],
           additionalProperties: false,
           description:
-            "Host-local persistent storage. Pinned to the pod's host machine — data\ndoes not survive a host failure. Disallowed on CPU pods. Mutually\nexclusive with NetworkMount. Deprecated: prefer NetworkMount for any\ndata you cannot recreate.\n",
+            "Host-local persistent storage. Pinned to the pod's host machine — data does not survive a host failure. Disallowed on CPU pods. Mutually exclusive with NetworkMount. Deprecated: prefer NetworkMount for any data you cannot recreate.",
           properties: {
             size: {
               type: 'integer',
@@ -351,13 +349,11 @@ export const generatedTools: GeneratedTool[] = [
       $defs: {
         BaseContainerConfig: {
           type: 'object',
-          description:
-            'Container configuration universal to every containerized resource. Compose ContainerConfig instead unless the resource cannot support a direct registry credential (clusters — there the registry credential arrives via a pod template, see CreateClusterRequest.templateId).\n',
           properties: {
             args: {
               type: 'string',
               description:
-                'The container\'s command, as a single raw string. This is the field `entrypoint` and `cmd` encode into, exposed in its stored form.\n\nTwo shapes are accepted. A bare shell string is treated as CMD and split into arguments, which is what the console\'s "Container start command" field writes. A JSON object of the form `{"entrypoint":[...],"cmd":[...]}` sets either or both explicitly.\n\nResponses always return both representations: `args` exactly as stored, plus the deconstructed `entrypoint` and `cmd`. Supplying `args` together with `entrypoint` or `cmd` is allowed only when they describe the same command, so a read-modify-write client can send back everything it received. Send `""` to clear, omit to leave unchanged.\n',
+                'The container\'s command as one raw string: a bare shell string is treated as CMD and split into arguments; a JSON object `{"entrypoint":[...],"cmd":[...]}` sets either or both. Send `""` to clear; omit to leave unchanged.',
               examples: [
                 '--model meta-llama/Llama-3-8B --max-model-len 8192',
                 '{"entrypoint":["/bin/bash","-c"],"cmd":["python -u main.py"]}',
@@ -370,7 +366,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                'Container CMD in exec form. When the image defines an ENTRYPOINT, this is the argument list passed to it. Encoded into the `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n',
+                'Container CMD in exec form: when the image defines an ENTRYPOINT, the argument list passed to it. Encoded into `args`; supply both only when they describe the same command. Send `[]` to clear; omit to leave unchanged.',
               examples: [
                 ['--model', 'meta-llama/Llama-3-8B', '--max-model-len', '8192'],
               ],
@@ -381,7 +377,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n",
+                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.",
               examples: [['/bin/bash', '-c']],
             },
             disk: {
@@ -444,7 +440,7 @@ export const generatedTools: GeneratedTool[] = [
               type: 'array',
               minItems: 1,
               description:
-                'Serverless GPU pool IDs (as returned by `GET /v2/catalog/gpus` in\n`pool`). Workers are placed on whichever listed pool has capacity.\nNarrow a pool down to specific cards with `excludedTypes`.\n\nOn `PATCH`, `pools` and `excludedTypes` are one selection and are\nreplaced together, so sending `pools` by itself **clears the\nexclusions**. Two cases:\n\n- **Changing pools, keeping exclusions** — send both fields in one\n  request: `{"gpu": {"pools": ["ADA_24"], "excludedTypes":\n  ["NVIDIA L40"]}}`. `GET` the endpoint first to read the current\n  `excludedTypes` and resend the ones that still apply to the new\n  pools; an exclusion naming a type outside `pools` is a 400.\n- **Changing only `count` or a CUDA constraint** — omit `pools`:\n  `{"gpu": {"minCudaVersion": "12.4"}}`. The pool list and the\n  exclusions are both left exactly as they are.\n\n`excludedTypes` documents the full rule.\n',
+                'Serverless GPU pool IDs (the `pool` field of `list-gpu-types`). Workers are placed on whichever listed pool has capacity; narrow to specific cards with `excludedTypes`. On update, `pools` and `excludedTypes` are replaced together, so sending `pools` alone clears the exclusions.',
               items: {
                 type: 'string',
               },
@@ -454,7 +450,7 @@ export const generatedTools: GeneratedTool[] = [
               type: 'array',
               uniqueItems: true,
               description:
-                'GPU **type** IDs to subtract from the selected pools — the `id`\nfield of `GET /v2/catalog/gpus`, the same identifiers pods take in\n`gpu.id`. Workers run on every type in `pools` except these. Omit to\nuse the whole pool.\n\nPools stay the unit of selection; types are the unit of\nsubtraction. There is no inclusive allowlist: a card later added to\none of your pools becomes eligible, which is the honest reading of\n"this pool, minus these".\n\nTied to `pools`, because the two together are one selection:\nsupplying `pools` replaces that selection wholesale, so a `PATCH`\nsending `pools` **without `excludedTypes`** **clears** them —\nrestate them to keep them. A `PATCH` that omits `pools` leaves both\nthe pools and the exclusions untouched, so changing only a CUDA\nconstraint cannot widen a pinned endpoint.\n\nRejected with 400 if a value is not a GPU type in one of `pools`;\nupstream accepts unrecognized exclusions silently, so a typo would\notherwise produce a filter that does nothing. Surrounding whitespace\nis trimmed, so `" NVIDIA L40"` and `"NVIDIA L40"` mean the same card.\n',
+                'GPU type IDs to subtract from the selected pools — the `id` field of `list-gpu-types`, the same identifiers pods take in `gpu.id`. Workers run on every type in `pools` except these; omit to use the whole pool. A value outside `pools` is rejected. On update, restate them whenever you send `pools`, or they are cleared.',
               items: {
                 type: 'string',
                 pattern: '^\\s*[^-\\s]',
@@ -471,8 +467,6 @@ export const generatedTools: GeneratedTool[] = [
           },
         },
         ContainerConfig: {
-          description:
-            'Reusable container configuration shared across templates, pods, and serverless endpoints. Adding a field here automatically propagates to all three resources.\n',
           allOf: [
             {
               $ref: '#/$defs/BaseContainerConfig',
@@ -500,7 +494,7 @@ export const generatedTools: GeneratedTool[] = [
         },
         CreateEndpointGpuConfig: {
           description:
-            "GPU request for an endpoint create. Carries the CUDA constraints, which\nlive here rather than at the body's top level so they are\nunrepresentable on a CPU endpoint.\n",
+            "GPU request for an endpoint create. Carries the CUDA constraints, which live here rather than at the body's top level so they are unrepresentable on a CPU endpoint.",
           allOf: [
             {
               $ref: '#/$defs/BaseEndpointGpuConfig',
@@ -516,14 +510,14 @@ export const generatedTools: GeneratedTool[] = [
                     pattern: '^\\d+\\.\\d+$',
                   },
                   description:
-                    "Acceptable CUDA versions for worker placement, as\n`major.minor`. Omit to accept any version (or inherit the\ntemplate's constraint when creating from `templateId`).\nMatching is exact — discover valid values per GPU type via\n`GET /v2/catalog/gpus?include=AVAILABILITY&product=SERVERLESS`\n(`cudaVersions`).\n\nA non-empty set is mutually exclusive with minCudaVersion (400\nif both are sent). An explicit `[]` states no constraint, so it\nmay accompany a floor.\n",
+                    "Acceptable CUDA versions for worker placement, as `major.minor`. Omit to accept any version (or inherit the template's constraint when creating from `templateId`).",
                   examples: [['12.8', '12.6']],
                 },
                 minCudaVersion: {
                   type: 'string',
                   pattern: '^\\d+\\.\\d+$',
                   description:
-                    'Lowest acceptable CUDA version for worker placement, as\n`major.minor`, compared numerically rather than as a decimal —\nso 12.11 is above 12.2. Use this for an open-ended floor and\nallowedCudaVersions for an exact set.\n\nMutually exclusive with a non-empty allowedCudaVersions (400 if\nboth are sent); an explicit `[]` there states no constraint and\nmay accompany this floor.\n',
+                    'Lowest acceptable CUDA version for worker placement, as `major.minor`, compared numerically rather than as a decimal — so 12.11 is above 12.2. Use this for an open-ended floor and allowedCudaVersions for an exact set.',
                   examples: ['12.1'],
                 },
               },
@@ -568,14 +562,14 @@ export const generatedTools: GeneratedTool[] = [
                     },
                   ],
                   description:
-                    'Request-routing model. Required — it determines the valid scaler\nand request URLs, so it must be chosen explicitly on every create.\n',
+                    'Request-routing model. Required — it determines the valid scaler and request URLs, so it must be chosen explicitly on every create.',
                 },
                 cpu: {
                   type: 'array',
                   minItems: 1,
                   uniqueItems: true,
                   description:
-                    "Eligible CPU configurations for each worker. Memory is derived from the\nselected flavor's catalog RAM multiplier. Exact duplicate configurations\nare rejected; the same flavor may be listed at different vCPU counts.\n",
+                    "Eligible CPU configurations for each worker. Memory is derived from the selected flavor's catalog RAM multiplier. Exact duplicate configurations are rejected; the same flavor may be listed at different vCPU counts.",
                   items: {
                     $ref: '#/$defs/CreateCpuConfig',
                   },
@@ -606,7 +600,7 @@ export const generatedTools: GeneratedTool[] = [
                   type: 'string',
                   minLength: 1,
                   description:
-                    "ID of a serverless template to base this endpoint on. The\ntemplate is resolved at create time into the same container\nsettings you could otherwise spread into this body (image,\nargs, disk, ports, env, registry); explicit body fields\noverride the template's, except `env`, which is merged per\nkey with body values winning. The template's\nallowedCudaVersions seeds `gpu.allowedCudaVersions` when the\nbody omits it — but only for a GPU create, since a CPU endpoint\nhas no gpu block to seed into, and not when the body sets\n`gpu.minCudaVersion`, since seeding a set beside a floor would\nmanufacture the mutual-exclusion 400 from a valid request. Its\npod-specific startSsh/startJupyter flags are\nignored. Later template edits do not affect the endpoint.\nThe template may be one of your own or a public catalog\ntemplate — see `GET /v2/catalog/templates` (unknown or\ninaccessible ID → 404) — and must be a serverless template\n(→ 422).\n",
+                    'ID of a serverless template to base this endpoint on (must be serverless). Its container settings (image, args, disk, ports, env, registry) fill in what this body omits; body fields win, and `env` merges per key with body winning. Its allowedCudaVersions seeds `gpu.allowedCudaVersions` when the body omits it; pod-only flags are ignored. Copied once: later edits do not apply.',
                   examples: ['30zmvf89kd'],
                 },
                 timeout: {
@@ -656,7 +650,7 @@ export const generatedTools: GeneratedTool[] = [
         },
         EndpointScaling: {
           description:
-            "Autoscaling signal — a discriminated union on `type`: `QUEUE_DELAY`\n(queue-based endpoints only) or `REQUEST_COUNT`. The scaler is chosen\nindependently of the endpoint's routing `type` and can be switched on\nupdate.\n",
+            "Autoscaling signal — a discriminated union on `type`: `QUEUE_DELAY` (queue-based endpoints only) or `REQUEST_COUNT`. The scaler is chosen independently of the endpoint's routing `type` and can be switched on update.",
           oneOf: [
             {
               $ref: '#/$defs/QueueDelayScaling',
@@ -676,7 +670,7 @@ export const generatedTools: GeneratedTool[] = [
         EndpointType: {
           type: 'string',
           description:
-            'Request-routing semantics for a modern serverless endpoint.\n- `QUEUE` — submit asynchronous or synchronous jobs through the managed queue.\n- `LOAD_BALANCER` — send requests directly to worker-defined HTTP paths.\n  Configure via `env`: `PORT` (server port, default 80), `PORT_HEALTH`\n  (health-check port, default 80), and `HEALTH_CHECK_PATH` (path the\n  load balancer polls for worker health, default `/ping`).\n',
+            'Request-routing semantics for a modern serverless endpoint. `QUEUE` — submit asynchronous or synchronous jobs through the managed queue. `LOAD_BALANCER` — send requests directly to worker-defined HTTP paths.',
           'x-enum-varnames': ['EndpointTypeQueue', 'EndpointTypeLoadBalancer'],
           enum: ['QUEUE', 'LOAD_BALANCER'],
         },
@@ -701,7 +695,7 @@ export const generatedTools: GeneratedTool[] = [
               minimum: 1,
               maximum: 3600,
               description:
-                'Seconds before idle workers scale down. Not applicable to queue-based\nendpoints scaling on `requestCount` — rejected on create/update and\nomitted from responses for that combination.\n',
+                'Seconds before idle workers scale down. Not applicable to queue-based endpoints scaling on `requestCount` — rejected on create/update and omitted from responses for that combination.',
               examples: [5],
             },
           },
@@ -709,7 +703,7 @@ export const generatedTools: GeneratedTool[] = [
         FlashBoot: {
           type: 'string',
           description:
-            'FlashBoot cold-start acceleration mode.\n- `OFF`                — disabled\n- `FLASHBOOT`          — enabled\n- `PRIORITY_FLASHBOOT` — enabled with priority capacity\n',
+            'FlashBoot cold-start acceleration mode. `OFF` — disabled. `FLASHBOOT` — enabled. `PRIORITY_FLASHBOOT` — enabled with priority capacity',
           enum: ['OFF', 'FLASHBOOT', 'PRIORITY_FLASHBOOT'],
         },
         QueueDelayScaling: {
@@ -738,7 +732,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'object',
           additionalProperties: false,
           description:
-            'Scale on concurrent in-flight requests per worker. Required for\nload-balancing endpoints; also selectable for queue-based.\n',
+            'Scale on concurrent in-flight requests per worker. Required for load-balancing endpoints; also selectable for queue-based.',
           required: ['type', 'requestCount'],
           properties: {
             type: {
@@ -814,7 +808,7 @@ export const generatedTools: GeneratedTool[] = [
                 },
               ],
               description:
-                "Storage tier for the volume. Optional. When omitted, the volume is\nprovisioned using the requested data center's default (primary)\nstorage tier. HIGH_PERFORMANCE provisions a high-performance (HPS)\nvolume; STANDARD provisions a standard volume. A volume's tier is\nimmutable after creation.\n",
+                "Storage tier for the volume. Optional. When omitted, the volume is provisioned using the requested data center's default (primary) storage tier.",
             },
           },
         },
@@ -852,13 +846,11 @@ export const generatedTools: GeneratedTool[] = [
       $defs: {
         BaseContainerConfig: {
           type: 'object',
-          description:
-            'Container configuration universal to every containerized resource. Compose ContainerConfig instead unless the resource cannot support a direct registry credential (clusters — there the registry credential arrives via a pod template, see CreateClusterRequest.templateId).\n',
           properties: {
             args: {
               type: 'string',
               description:
-                'The container\'s command, as a single raw string. This is the field `entrypoint` and `cmd` encode into, exposed in its stored form.\n\nTwo shapes are accepted. A bare shell string is treated as CMD and split into arguments, which is what the console\'s "Container start command" field writes. A JSON object of the form `{"entrypoint":[...],"cmd":[...]}` sets either or both explicitly.\n\nResponses always return both representations: `args` exactly as stored, plus the deconstructed `entrypoint` and `cmd`. Supplying `args` together with `entrypoint` or `cmd` is allowed only when they describe the same command, so a read-modify-write client can send back everything it received. Send `""` to clear, omit to leave unchanged.\n',
+                'The container\'s command as one raw string: a bare shell string is treated as CMD and split into arguments; a JSON object `{"entrypoint":[...],"cmd":[...]}` sets either or both. Send `""` to clear; omit to leave unchanged.',
               examples: [
                 '--model meta-llama/Llama-3-8B --max-model-len 8192',
                 '{"entrypoint":["/bin/bash","-c"],"cmd":["python -u main.py"]}',
@@ -871,7 +863,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                'Container CMD in exec form. When the image defines an ENTRYPOINT, this is the argument list passed to it. Encoded into the `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n',
+                'Container CMD in exec form: when the image defines an ENTRYPOINT, the argument list passed to it. Encoded into `args`; supply both only when they describe the same command. Send `[]` to clear; omit to leave unchanged.',
               examples: [
                 ['--model', 'meta-llama/Llama-3-8B', '--max-model-len', '8192'],
               ],
@@ -882,7 +874,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n",
+                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.",
               examples: [['/bin/bash', '-c']],
             },
             disk: {
@@ -959,12 +951,10 @@ export const generatedTools: GeneratedTool[] = [
         Cloud: {
           type: 'string',
           description:
-            'Cloud tier.\n- `SECURE`    — Runpod-owned datacenter hardware\n- `COMMUNITY` — community-hosted hardware\n',
+            'Cloud tier. `SECURE` — Runpod-owned datacenter hardware. `COMMUNITY` — community-hosted hardware',
           enum: ['SECURE', 'COMMUNITY'],
         },
         ContainerConfig: {
-          description:
-            'Reusable container configuration shared across templates, pods, and serverless endpoints. Adding a field here automatically propagates to all three resources.\n',
           allOf: [
             {
               $ref: '#/$defs/BaseContainerConfig',
@@ -992,7 +982,7 @@ export const generatedTools: GeneratedTool[] = [
         },
         CreateGpuConfig: {
           description:
-            "GPU request for a pod create. Carries the CUDA host constraints, which\nlive here rather than at the body's top level so they are\nunrepresentable on a CPU pod.\n",
+            "GPU request for a pod create. Carries the CUDA host constraints, which live here rather than at the body's top level so they are unrepresentable on a CPU pod.",
           allOf: [
             {
               $ref: '#/$defs/BaseGpuConfig',
@@ -1007,14 +997,14 @@ export const generatedTools: GeneratedTool[] = [
                     pattern: '^\\d+\\.\\d+$',
                   },
                   description:
-                    'Acceptable CUDA versions for the host machine, as `major.minor`.\nOmit to accept any version. Matching is exact, so a version no\nmachine reports yields a capacity error rather than a fallback —\ndiscover valid values per GPU type via\n`GET /v2/catalog/gpus?include=AVAILABILITY&product=POD`\n(`cudaVersions`).\n\nA non-empty set is mutually exclusive with minCudaVersion (400\nif both are sent). An explicit `[]` states no constraint, so it\nmay accompany a floor.\n',
+                    'Acceptable CUDA versions for the host machine, as `major.minor`. Omit to accept any version.',
                   examples: [['12.8', '12.6']],
                 },
                 minCudaVersion: {
                   type: 'string',
                   pattern: '^\\d+\\.\\d+$',
                   description:
-                    'Lowest acceptable CUDA version for the host machine, as\n`major.minor`, compared numerically rather than as a decimal —\nso 12.11 is above 12.2. Use this for an open-ended floor and\nallowedCudaVersions for an exact set.\n\nMutually exclusive with a non-empty allowedCudaVersions (400 if\nboth are sent); an explicit `[]` there states no constraint and\nmay accompany this floor.\n',
+                    'Lowest acceptable CUDA version for the host machine, as `major.minor`, compared numerically rather than as a decimal — so 12.11 is above 12.2. Use this for an open-ended floor and allowedCudaVersions for an exact set.',
                   examples: ['12.1'],
                 },
                 minRamPerGpu: {
@@ -1045,7 +1035,7 @@ export const generatedTools: GeneratedTool[] = [
               type: 'object',
               required: ['name'],
               description:
-                "Request body for creating a pod. Exactly one of `gpu` or `cpu`\nmust be set — enforced at the handler layer. For CPU pods, memory\nis derived by the API from the selected flavor's RAM multiplier;\nclients provide only CPU flavor and vCPU count. CPU pods support\ncontainer disk and network volumes only; `mounts.persistent` is\ninvalid when `cpu` is set.\n\n`image` is required unless `templateId` is set.\n",
+                'Request body for creating a pod. Exactly one of `gpu` or `cpu` must be set — enforced at the handler layer.',
               properties: {
                 name: {
                   type: 'string',
@@ -1070,14 +1060,14 @@ export const generatedTools: GeneratedTool[] = [
                     type: 'string',
                   },
                   description:
-                    'Preferred data centers for placement. Omit or pass an empty\narray to let the scheduler choose.\n',
+                    'Preferred data centers for placement. Omit or pass an empty array to let the scheduler choose.',
                   examples: [['US-TX-3']],
                 },
                 globalNetworking: {
                   type: 'boolean',
                   default: false,
                   description:
-                    'Enable global networking, giving the pod a private IP reachable across data centers. Requires an NVIDIA GPU and a global-networking-enabled data center (both enforced upstream). See `GET /v2/catalog/datacenters` (`globalNetwork`) for eligible data centers.',
+                    'Enable global networking, giving the pod a private IP reachable across data centers. Requires an NVIDIA GPU and a global-networking-enabled data center (both enforced upstream).',
                   examples: [false],
                 },
                 gpu: {
@@ -1090,21 +1080,21 @@ export const generatedTools: GeneratedTool[] = [
                   type: 'boolean',
                   default: false,
                   description:
-                    "Create-time flag telling the provisioner to start JupyterLab:\ninjects a generated `JUPYTER_PASSWORD` environment variable,\nunless the request already sets one. Only images that honor\nthe convention start Jupyter from it (Runpod official images\ndo); expose `8888/http` in `ports` to reach it.\n\nNot part of the pod's readable config — never returned by\nGET and not changeable by PATCH.\n",
+                    'Create-time flag: starts JupyterLab by injecting a generated `JUPYTER_PASSWORD` environment variable, unless the request sets one. Expose `8888/http` in `ports` to reach it.',
                   examples: [true],
                 },
                 startSsh: {
                   type: 'boolean',
                   default: false,
                   description:
-                    "Create-time flag telling the provisioner to set up SSH\naccess: injects a `PUBLIC_KEY` environment variable carrying\nyour account's registered SSH public keys, unless the request\nalready sets one. **Requires registered keys** (`PUT\n/v2/account/ssh-keys`) — with none registered the flag does\nnothing and the pod has no SSH access. Only images that honor\nthe convention start sshd from it (all Runpod official images\ndo). Connect using the pod's `ssh` block; the `ssh.direct`\nvariant additionally needs a `22/tcp` entry in `ports`.\n\nNot part of the pod's readable config — never returned by\nGET and not changeable by PATCH.\n",
+                    "Create-time flag: sets up SSH access by injecting a `PUBLIC_KEY` environment variable with your account's registered SSH keys (`update-ssh-keys`), unless the request sets one. With no registered keys it does nothing and the pod has no SSH access. Direct SSH also needs a `22/tcp` entry in `ports`.",
                   examples: [true],
                 },
                 templateId: {
                   type: 'string',
                   minLength: 1,
                   description:
-                    "ID of a pod template to base this pod on. The template is\nresolved at create time into the same container settings you\ncould otherwise spread into this body (image, args, disk,\nports, env, registry, persistent mount, startSsh,\nstartJupyter, allowedCudaVersions); explicit body fields\noverride the template's, except `env`, which is merged per\nkey with body values winning. Sending either CUDA field\n(`gpu.allowedCudaVersions` or `gpu.minCudaVersion`) replaces\nthe template's CUDA constraint entirely, and CPU pods ignore\nit (like the persistent mount). The template is a one-time\nsource of settings: later template edits do not affect the\npod, and the created pod does not retain a link to the\ntemplate (`template` stays null). The template may be one\nof your own or a public catalog template — see\n`GET /v2/catalog/templates` (unknown or inaccessible ID →\n404) — and must not be a serverless template (→ 422). CPU\npods do not inherit a template's persistent mount.\n",
+                    "ID of a pod template to base this pod on (not a serverless one). Its container settings (image, args, disk, ports, env, registry, persistent mount) fill in what this body omits; body fields win, and `env` merges per key with body winning. A CUDA field in `gpu` replaces the template's CUDA constraint; CPU pods ignore its mount. Copied once: later template edits do not affect the pod.",
                   examples: ['30zmvf89kd'],
                 },
               },
@@ -1124,7 +1114,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'object',
           additionalProperties: false,
           description:
-            'Storage mounts attached to a pod. At-most-one of `persistent` or\n`network` may be set today (mutually exclusive, enforced at the\nhandler with 400 if both are present). The `network` field is an\narray for forward compatibility with eventual multi-network-volume\nsupport, but `maxItems` is 1 today.\n\nPATCH semantics:\n- Omitting `mounts` or sending `{}` leaves the existing mount\n  unchanged.\n- An explicit `network: []` is rejected with 400 (clearing mounts\n  is not supported).\n- Mount kind is fixed at create — a PATCH that introduces a kind\n  not present at create (persistent on a network pod, network on\n  a persistent pod, or any mount on a previously-mountless pod)\n  is rejected with 400.\n- The `volumeId` of a network mount is immutable; a PATCH that\n  names a different `volumeId` is rejected with 400.\n- Partial mounts are not supported — every mount entry must\n  include the full schema (`size` + `path` for persistent,\n  `volumeId` + `path` for network). Missing required fields → 422.\n',
+            "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
           properties: {
             persistent: {
               $ref: '#/$defs/PersistentMount',
@@ -1143,7 +1133,7 @@ export const generatedTools: GeneratedTool[] = [
           required: ['volumeId', 'path'],
           additionalProperties: false,
           description:
-            'Reference to a NetworkVolume. Custom paths are honored at runtime on\nboth GPU and CPU pods. The underlying `volumeId` is immutable\npost-create; the mount `path` may be changed via PATCH.\n',
+            'Reference to a NetworkVolume. Custom paths are honored at runtime on both GPU and CPU pods. The underlying `volumeId` is immutable post-create; the mount `path` may be changed via PATCH.',
           properties: {
             volumeId: {
               type: 'string',
@@ -1164,7 +1154,7 @@ export const generatedTools: GeneratedTool[] = [
           required: ['size', 'path'],
           additionalProperties: false,
           description:
-            "Host-local persistent storage. Pinned to the pod's host machine — data\ndoes not survive a host failure. Disallowed on CPU pods. Mutually\nexclusive with NetworkMount. Deprecated: prefer NetworkMount for any\ndata you cannot recreate.\n",
+            "Host-local persistent storage. Pinned to the pod's host machine — data does not survive a host failure. Disallowed on CPU pods. Mutually exclusive with NetworkMount. Deprecated: prefer NetworkMount for any data you cannot recreate.",
           properties: {
             size: {
               type: 'integer',
@@ -1273,7 +1263,7 @@ export const generatedTools: GeneratedTool[] = [
               maxLength: 191,
               pattern: '^[a-zA-Z_][a-zA-Z0-9_.\\-/]*$',
               description:
-                'Unique name for the secret — referenced from environment variables as `{{ RUNPOD_SECRET_<name> }}`; immutable after creation. Maximum 191 characters, must start with a letter or underscore, and may contain letters, digits, and `_.-/`. Names beginning with the reserved prefix `RUNPOD` are rejected (case-insensitive).',
+                'Unique name for the secret — referenced from environment variables as `{{ RUNPOD_SECRET_<name> }}`; immutable after creation. Maximum 191 characters, must start with a letter or underscore, and may contain letters, digits, and `_.-/`.',
               examples: ['hf-token'],
             },
             value: {
@@ -1321,13 +1311,11 @@ export const generatedTools: GeneratedTool[] = [
       $defs: {
         BaseContainerConfig: {
           type: 'object',
-          description:
-            'Container configuration universal to every containerized resource. Compose ContainerConfig instead unless the resource cannot support a direct registry credential (clusters — there the registry credential arrives via a pod template, see CreateClusterRequest.templateId).\n',
           properties: {
             args: {
               type: 'string',
               description:
-                'The container\'s command, as a single raw string. This is the field `entrypoint` and `cmd` encode into, exposed in its stored form.\n\nTwo shapes are accepted. A bare shell string is treated as CMD and split into arguments, which is what the console\'s "Container start command" field writes. A JSON object of the form `{"entrypoint":[...],"cmd":[...]}` sets either or both explicitly.\n\nResponses always return both representations: `args` exactly as stored, plus the deconstructed `entrypoint` and `cmd`. Supplying `args` together with `entrypoint` or `cmd` is allowed only when they describe the same command, so a read-modify-write client can send back everything it received. Send `""` to clear, omit to leave unchanged.\n',
+                'The container\'s command as one raw string: a bare shell string is treated as CMD and split into arguments; a JSON object `{"entrypoint":[...],"cmd":[...]}` sets either or both. Send `""` to clear; omit to leave unchanged.',
               examples: [
                 '--model meta-llama/Llama-3-8B --max-model-len 8192',
                 '{"entrypoint":["/bin/bash","-c"],"cmd":["python -u main.py"]}',
@@ -1340,7 +1328,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                'Container CMD in exec form. When the image defines an ENTRYPOINT, this is the argument list passed to it. Encoded into the `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n',
+                'Container CMD in exec form: when the image defines an ENTRYPOINT, the argument list passed to it. Encoded into `args`; supply both only when they describe the same command. Send `[]` to clear; omit to leave unchanged.',
               examples: [
                 ['--model', 'meta-llama/Llama-3-8B', '--max-model-len', '8192'],
               ],
@@ -1351,7 +1339,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n",
+                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.",
               examples: [['/bin/bash', '-c']],
             },
             disk: {
@@ -1388,8 +1376,6 @@ export const generatedTools: GeneratedTool[] = [
           },
         },
         ContainerConfig: {
-          description:
-            'Reusable container configuration shared across templates, pods, and serverless endpoints. Adding a field here automatically propagates to all three resources.\n',
           allOf: [
             {
               $ref: '#/$defs/BaseContainerConfig',
@@ -1428,7 +1414,7 @@ export const generatedTools: GeneratedTool[] = [
                     pattern: '^\\d+\\.\\d+$',
                   },
                   description:
-                    'Acceptable CUDA versions for containers created from this\ntemplate, as `major.minor`. Omit to accept any version — see\nthe same field on `createPod` for matching semantics.\nExpanded into GPU pod and serverless endpoint creates; CPU\npods ignore it.\n',
+                    'Acceptable CUDA versions for containers created from this template, as `major.minor`. Omit to accept any version — see the same field on `createPod` for matching semantics.',
                   examples: [['12.8', '12.6']],
                 },
                 category: {
@@ -1455,14 +1441,14 @@ export const generatedTools: GeneratedTool[] = [
                   type: 'boolean',
                   default: true,
                   description:
-                    'Start JupyterLab in containers created from this template:\ninjects a generated `JUPYTER_PASSWORD` environment variable,\nunless `env` already sets one. Only images that honor the\nconvention start Jupyter from it (Runpod official images do);\nexpose `8888/http` in `ports` to reach it. Defaults to `true`\nwhen omitted, matching console-created templates.\n',
+                    'Start JupyterLab in containers created from this template: injects a generated `JUPYTER_PASSWORD` environment variable, unless `env` already sets one.',
                   examples: [false],
                 },
                 startSsh: {
                   type: 'boolean',
                   default: true,
                   description:
-                    "Provision SSH access in containers created from this template:\ninjects a `PUBLIC_KEY` environment variable carrying the\ndeployer's registered SSH public keys (`PUT\n/v2/account/ssh-keys` — with none registered the flag does\nnothing), unless `env` already sets one. Only images that\nhonor the convention start sshd from it (all Runpod official\nimages do); direct SSH also needs a `22/tcp` entry in\n`ports`. Defaults to `true` when omitted, matching\nconsole-created templates.\n",
+                    "Provision SSH access in containers created from this template: injects a `PUBLIC_KEY` environment variable carrying the deployer's registered SSH public keys (`update-ssh-keys` — with none registered the flag does nothing), unless `env` already sets one.",
                   examples: [true],
                 },
               },
@@ -1475,7 +1461,7 @@ export const generatedTools: GeneratedTool[] = [
           required: ['size', 'path'],
           additionalProperties: false,
           description:
-            "Host-local persistent storage. Pinned to the pod's host machine — data\ndoes not survive a host failure. Disallowed on CPU pods. Mutually\nexclusive with NetworkMount. Deprecated: prefer NetworkMount for any\ndata you cannot recreate.\n",
+            "Host-local persistent storage. Pinned to the pod's host machine — data does not survive a host failure. Disallowed on CPU pods. Mutually exclusive with NetworkMount. Deprecated: prefer NetworkMount for any data you cannot recreate.",
           properties: {
             size: {
               type: 'integer',
@@ -1495,14 +1481,14 @@ export const generatedTools: GeneratedTool[] = [
         TemplateCategory: {
           type: 'string',
           description:
-            'Controls how the template is grouped and filtered in the Runpod console.\nIt does not affect hardware selection, scheduling, or billing.\n- `CPU`    — CPU-only workloads\n- `NVIDIA` — NVIDIA GPU workloads\n- `AMD`    — AMD GPU workloads\n',
+            'Controls how the template is grouped and filtered in the Runpod console. It does not affect hardware selection, scheduling, or billing. `CPU` — CPU-only workloads. `NVIDIA` — NVIDIA GPU workloads. `AMD` — AMD GPU workloads',
           enum: ['CPU', 'NVIDIA', 'AMD'],
         },
         TemplateMounts: {
           type: 'object',
           additionalProperties: false,
           description:
-            'Storage mounts attached to a template. Templates support only a\nsingle persistent mount today; any `network` property is rejected\nwith 422 by the schema validator.\n\nPATCH semantics: omitting `mounts` or sending `{}` leaves the\nexisting mount unchanged.\n',
+            'Storage mounts for containers from this template: a single `persistent` mount only (`network` is rejected). On update, omitting `mounts` or sending `{}` leaves the existing mount unchanged.',
           properties: {
             persistent: {
               $ref: '#/$defs/PersistentMount',
@@ -1956,7 +1942,7 @@ export const generatedTools: GeneratedTool[] = [
         buildId: {
           type: 'string',
           description:
-            "GitHub build identifier (from GET /v2/serverless/{id}/builds or a release's `buildId`)",
+            "GitHub build identifier (from `list-endpoint-builds` or a release's `buildId`)",
         },
       },
       required: ['id', 'buildId'],
@@ -2035,7 +2021,7 @@ export const generatedTools: GeneratedTool[] = [
             $ref: '#/$defs/Product',
           },
           description:
-            'Comma-separated availability product contexts. Supported values: POD, CLUSTER, SERVERLESS. Required with include=AVAILABILITY, and valid only with it (400 either way). There is no default: the same GPU type can be scarce for pods and plentiful for serverless, so the context has to be stated rather than assumed.',
+            'Comma-separated availability product contexts. Supported values: POD, CLUSTER, SERVERLESS. Required with include=AVAILABILITY, and valid only with it (400 either way).',
         },
         count: {
           type: 'integer',
@@ -2056,7 +2042,7 @@ export const generatedTools: GeneratedTool[] = [
             pattern: '^[A-Z]{2}$',
           },
           description:
-            'Comma-separated ISO 3166-1 alpha-2 country codes, uppercase, to constrain availability to — e.g. FR or FR,DE. Values within this filter use OR semantics. Valid only with include=AVAILABILITY (400 otherwise); a malformed entry is a 422. Scopes availability, lowest-price calculations and the dataCenters array to those countries, so a listed data center outside them is omitted rather than returned with availability NONE. On the list endpoint a GPU type with no data center in those countries drops out entirely; the single-GPU endpoint still returns the requested type, with availability NONE and dataCenters omitted, so a 404 keeps meaning the GPU type does not exist. Read the NONE on availability rather than the absence of dataCenters, which is also absent when availability was not requested.',
+            'Comma-separated ISO 3166-1 alpha-2 country codes, uppercase, to constrain availability to — e.g. FR or FR,DE. Values within this filter use OR semantics. Valid only with include=AVAILABILITY; a malformed entry is a 422.',
         },
         cudaVersions: {
           type: 'array',
@@ -2065,13 +2051,13 @@ export const generatedTools: GeneratedTool[] = [
             pattern: '^\\d+\\.\\d+$',
           },
           description:
-            'Comma-separated CUDA versions to scope availability and lowest-price calculations to, matched exactly. Format: major.minor, e.g. 12.8 — a bare major is rejected here because it identifies no version. Valid only with include=AVAILABILITY (400 otherwise) and mutually exclusive with minCudaVersion (400 if both are sent); a malformed entry is a 422. Also narrows the returned cudaVersions array; omit it to enumerate every version offered.',
+            'Comma-separated CUDA versions to scope availability and lowest-price calculations to, matched exactly. Format: major.minor, e.g. 12.8 — a bare major is rejected here because it identifies no version.',
         },
         minCudaVersion: {
           type: 'string',
           pattern: '^\\d+(\\.\\d+)?$',
           description:
-            'Lowest acceptable CUDA version to scope availability and lowest-price calculations to, compared numerically. Format: integer major or major.minor, e.g. 12 or 12.1 — unlike the `gpu.minCudaVersion` body field on pod and endpoint create, a bare major is accepted here and means any release of that major, because this filter only widens a read. Valid only with include=AVAILABILITY (400 otherwise) and mutually exclusive with cudaVersions (400 if both are sent); a malformed value is a 422. Use this for an open-ended floor and cudaVersions for an exact set.',
+            'Lowest acceptable CUDA version to scope availability and lowest-price calculations to, compared numerically.',
         },
       },
       required: ['id'],
@@ -2306,13 +2292,13 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           format: 'date-time',
           description:
-            'Start of the billing period (RFC 3339). Defaults to 30 days ago. Snapped down to the start of its bucketSize bucket so the window aligns with the returned records; provide a boundary-aligned value (e.g. midnight for bucketSize=day) to avoid widening.\n',
+            'Start of the billing period (RFC 3339). Defaults to 30 days ago.',
         },
         endTime: {
           type: 'string',
           format: 'date-time',
           description:
-            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.\n',
+            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.',
         },
         bucketSize: {
           $ref: '#/$defs/BillingBucketSize',
@@ -2322,7 +2308,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'integer',
           minimum: 1,
           description:
-            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days". The resolved window is aligned to bucket boundaries: startTime is the start of the earliest bucket (e.g. midnight of the earliest day) and endTime is the end of the current bucket. Mutually exclusive with startTime/endTime; provide one or the other, not both.\n',
+            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days".',
         },
       },
       $defs: {
@@ -2386,13 +2372,13 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           format: 'date-time',
           description:
-            'Start of the billing period (RFC 3339). Defaults to 30 days ago. Snapped down to the start of its bucketSize bucket so the window aligns with the returned records; provide a boundary-aligned value (e.g. midnight for bucketSize=day) to avoid widening.\n',
+            'Start of the billing period (RFC 3339). Defaults to 30 days ago.',
         },
         endTime: {
           type: 'string',
           format: 'date-time',
           description:
-            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.\n',
+            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.',
         },
         bucketSize: {
           $ref: '#/$defs/BillingBucketSize',
@@ -2402,7 +2388,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'integer',
           minimum: 1,
           description:
-            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days". The resolved window is aligned to bucket boundaries: startTime is the start of the earliest bucket (e.g. midnight of the earliest day) and endTime is the end of the current bucket. Mutually exclusive with startTime/endTime; provide one or the other, not both.\n',
+            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days".',
         },
         clusterId: {
           type: 'string',
@@ -2743,13 +2729,13 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           format: 'date-time',
           description:
-            'Start of the billing period (RFC 3339). Defaults to 30 days ago. Snapped down to the start of its bucketSize bucket so the window aligns with the returned records; provide a boundary-aligned value (e.g. midnight for bucketSize=day) to avoid widening.\n',
+            'Start of the billing period (RFC 3339). Defaults to 30 days ago.',
         },
         endTime: {
           type: 'string',
           format: 'date-time',
           description:
-            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.\n',
+            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.',
         },
         bucketSize: {
           $ref: '#/$defs/BillingBucketSize',
@@ -2759,7 +2745,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'integer',
           minimum: 1,
           description:
-            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days". The resolved window is aligned to bucket boundaries: startTime is the start of the earliest bucket (e.g. midnight of the earliest day) and endTime is the end of the current bucket. Mutually exclusive with startTime/endTime; provide one or the other, not both.\n',
+            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days".',
         },
       },
       $defs: {
@@ -2819,7 +2805,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           minLength: 1,
           description:
-            "Opaque resume cursor — pass the previous response's `pagination.nextCursor` through verbatim; omit for the first page. A cursor is only valid for the operation and parameters that issued it; a malformed or foreign cursor is rejected with 422.\n",
+            "Opaque resume cursor — pass the previous response's `pagination.nextCursor` through verbatim; omit for the first page. A cursor is only valid for the operation and parameters that issued it; a malformed or foreign cursor is rejected.",
         },
         limit: {
           type: 'integer',
@@ -2870,7 +2856,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           minLength: 1,
           description:
-            "Opaque resume cursor — pass the previous response's `pagination.nextCursor` through verbatim; omit for the first page. A cursor is only valid for the operation and parameters that issued it; a malformed or foreign cursor is rejected with 422.\n",
+            "Opaque resume cursor — pass the previous response's `pagination.nextCursor` through verbatim; omit for the first page. A cursor is only valid for the operation and parameters that issued it; a malformed or foreign cursor is rejected.",
         },
         limit: {
           type: 'integer',
@@ -2979,7 +2965,7 @@ export const generatedTools: GeneratedTool[] = [
             $ref: '#/$defs/Product',
           },
           description:
-            'Comma-separated availability product contexts. Supported values: POD, CLUSTER, SERVERLESS. Required with include=AVAILABILITY, and valid only with it (400 either way). There is no default: the same GPU type can be scarce for pods and plentiful for serverless, so the context has to be stated rather than assumed.',
+            'Comma-separated availability product contexts. Supported values: POD, CLUSTER, SERVERLESS. Required with include=AVAILABILITY, and valid only with it (400 either way).',
         },
         count: {
           type: 'integer',
@@ -3000,7 +2986,7 @@ export const generatedTools: GeneratedTool[] = [
             pattern: '^[A-Z]{2}$',
           },
           description:
-            'Comma-separated ISO 3166-1 alpha-2 country codes, uppercase, to constrain availability to — e.g. FR or FR,DE. Values within this filter use OR semantics. Valid only with include=AVAILABILITY (400 otherwise); a malformed entry is a 422. Scopes availability, lowest-price calculations and the dataCenters array to those countries, so a listed data center outside them is omitted rather than returned with availability NONE. On the list endpoint a GPU type with no data center in those countries drops out entirely; the single-GPU endpoint still returns the requested type, with availability NONE and dataCenters omitted, so a 404 keeps meaning the GPU type does not exist. Read the NONE on availability rather than the absence of dataCenters, which is also absent when availability was not requested.',
+            'Comma-separated ISO 3166-1 alpha-2 country codes, uppercase, to constrain availability to — e.g. FR or FR,DE. Values within this filter use OR semantics. Valid only with include=AVAILABILITY; a malformed entry is a 422.',
         },
         cudaVersions: {
           type: 'array',
@@ -3009,13 +2995,13 @@ export const generatedTools: GeneratedTool[] = [
             pattern: '^\\d+\\.\\d+$',
           },
           description:
-            'Comma-separated CUDA versions to scope availability and lowest-price calculations to, matched exactly. Format: major.minor, e.g. 12.8 — a bare major is rejected here because it identifies no version. Valid only with include=AVAILABILITY (400 otherwise) and mutually exclusive with minCudaVersion (400 if both are sent); a malformed entry is a 422. Also narrows the returned cudaVersions array; omit it to enumerate every version offered.',
+            'Comma-separated CUDA versions to scope availability and lowest-price calculations to, matched exactly. Format: major.minor, e.g. 12.8 — a bare major is rejected here because it identifies no version.',
         },
         minCudaVersion: {
           type: 'string',
           pattern: '^\\d+(\\.\\d+)?$',
           description:
-            'Lowest acceptable CUDA version to scope availability and lowest-price calculations to, compared numerically. Format: integer major or major.minor, e.g. 12 or 12.1 — unlike the `gpu.minCudaVersion` body field on pod and endpoint create, a bare major is accepted here and means any release of that major, because this filter only widens a read. Valid only with include=AVAILABILITY (400 otherwise) and mutually exclusive with cudaVersions (400 if both are sent); a malformed value is a 422. Use this for an open-ended floor and cudaVersions for an exact set.',
+            'Lowest acceptable CUDA version to scope availability and lowest-price calculations to, compared numerically.',
         },
       },
       $defs: {
@@ -3082,13 +3068,13 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           format: 'date-time',
           description:
-            'Start of the billing period (RFC 3339). Defaults to 30 days ago. Snapped down to the start of its bucketSize bucket so the window aligns with the returned records; provide a boundary-aligned value (e.g. midnight for bucketSize=day) to avoid widening.\n',
+            'Start of the billing period (RFC 3339). Defaults to 30 days ago.',
         },
         endTime: {
           type: 'string',
           format: 'date-time',
           description:
-            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.\n',
+            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.',
         },
         bucketSize: {
           $ref: '#/$defs/BillingBucketSize',
@@ -3098,7 +3084,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'integer',
           minimum: 1,
           description:
-            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days". The resolved window is aligned to bucket boundaries: startTime is the start of the earliest bucket (e.g. midnight of the earliest day) and endTime is the end of the current bucket. Mutually exclusive with startTime/endTime; provide one or the other, not both.\n',
+            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days".',
         },
         networkVolumeId: {
           type: 'string',
@@ -3186,13 +3172,13 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           format: 'date-time',
           description:
-            'Start of the billing period (RFC 3339). Defaults to 30 days ago. Snapped down to the start of its bucketSize bucket so the window aligns with the returned records; provide a boundary-aligned value (e.g. midnight for bucketSize=day) to avoid widening.\n',
+            'Start of the billing period (RFC 3339). Defaults to 30 days ago.',
         },
         endTime: {
           type: 'string',
           format: 'date-time',
           description:
-            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.\n',
+            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.',
         },
         bucketSize: {
           $ref: '#/$defs/BillingBucketSize',
@@ -3202,7 +3188,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'integer',
           minimum: 1,
           description:
-            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days". The resolved window is aligned to bucket boundaries: startTime is the start of the earliest bucket (e.g. midnight of the earliest day) and endTime is the end of the current bucket. Mutually exclusive with startTime/endTime; provide one or the other, not both.\n',
+            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days".',
         },
         podId: {
           type: 'string',
@@ -3268,7 +3254,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           minLength: 1,
           description:
-            "Opaque resume cursor — pass the previous response's `pagination.nextCursor` through verbatim; omit for the first page. A cursor is only valid for the operation and parameters that issued it; a malformed or foreign cursor is rejected with 422.\n",
+            "Opaque resume cursor — pass the previous response's `pagination.nextCursor` through verbatim; omit for the first page. A cursor is only valid for the operation and parameters that issued it; a malformed or foreign cursor is rejected.",
         },
         limit: {
           type: 'integer',
@@ -3307,7 +3293,7 @@ export const generatedTools: GeneratedTool[] = [
           enum: ['official', 'verified', 'community'],
           default: 'official',
           description:
-            'Which slice of the catalog to return: `official` for\nRunpod-curated templates (default), `verified` for\nRunpod-verified community templates, or `community` for all other\npublicly shared templates.\n',
+            'Which slice of the catalog to return: `official` for Runpod-curated templates (default), `verified` for Runpod-verified community templates, or `community` for all other publicly shared templates.',
         },
       },
     },
@@ -3406,13 +3392,13 @@ export const generatedTools: GeneratedTool[] = [
           type: 'string',
           format: 'date-time',
           description:
-            'Start of the billing period (RFC 3339). Defaults to 30 days ago. Snapped down to the start of its bucketSize bucket so the window aligns with the returned records; provide a boundary-aligned value (e.g. midnight for bucketSize=day) to avoid widening.\n',
+            'Start of the billing period (RFC 3339). Defaults to 30 days ago.',
         },
         endTime: {
           type: 'string',
           format: 'date-time',
           description:
-            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.\n',
+            'End of the billing period (RFC 3339), exclusive. Defaults to now. Snapped up to the end of the bucketSize bucket it lands in (unless already on a boundary) so the window aligns with the returned records.',
         },
         bucketSize: {
           $ref: '#/$defs/BillingBucketSize',
@@ -3422,7 +3408,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'integer',
           minimum: 1,
           description:
-            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days". The resolved window is aligned to bucket boundaries: startTime is the start of the earliest bucket (e.g. midnight of the earliest day) and endTime is the end of the current bucket. Mutually exclusive with startTime/endTime; provide one or the other, not both.\n',
+            'Return the last N buckets of bucketSize, ending with the current (in-progress) bucket — e.g. lastN=100 with bucketSize=day is "last 100 days".',
         },
         serverlessId: {
           type: 'string',
@@ -3564,7 +3550,7 @@ export const generatedTools: GeneratedTool[] = [
           additionalProperties: false,
           minProperties: 1,
           description:
-            'Request body for updating a cluster. Only the cluster name can be\nchanged — this endpoint is a rename. Compute shape, type, and container\nconfiguration are fixed at creation.\n',
+            'Request body for updating a cluster. Only the cluster name can be changed — this endpoint is a rename. Compute shape, type, and container configuration are fixed at creation.',
           properties: {
             name: {
               type: 'string',
@@ -3611,13 +3597,11 @@ export const generatedTools: GeneratedTool[] = [
       $defs: {
         BaseContainerConfig: {
           type: 'object',
-          description:
-            'Container configuration universal to every containerized resource. Compose ContainerConfig instead unless the resource cannot support a direct registry credential (clusters — there the registry credential arrives via a pod template, see CreateClusterRequest.templateId).\n',
           properties: {
             args: {
               type: 'string',
               description:
-                'The container\'s command, as a single raw string. This is the field `entrypoint` and `cmd` encode into, exposed in its stored form.\n\nTwo shapes are accepted. A bare shell string is treated as CMD and split into arguments, which is what the console\'s "Container start command" field writes. A JSON object of the form `{"entrypoint":[...],"cmd":[...]}` sets either or both explicitly.\n\nResponses always return both representations: `args` exactly as stored, plus the deconstructed `entrypoint` and `cmd`. Supplying `args` together with `entrypoint` or `cmd` is allowed only when they describe the same command, so a read-modify-write client can send back everything it received. Send `""` to clear, omit to leave unchanged.\n',
+                'The container\'s command as one raw string: a bare shell string is treated as CMD and split into arguments; a JSON object `{"entrypoint":[...],"cmd":[...]}` sets either or both. Send `""` to clear; omit to leave unchanged.',
               examples: [
                 '--model meta-llama/Llama-3-8B --max-model-len 8192',
                 '{"entrypoint":["/bin/bash","-c"],"cmd":["python -u main.py"]}',
@@ -3630,7 +3614,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                'Container CMD in exec form. When the image defines an ENTRYPOINT, this is the argument list passed to it. Encoded into the `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n',
+                'Container CMD in exec form: when the image defines an ENTRYPOINT, the argument list passed to it. Encoded into `args`; supply both only when they describe the same command. Send `[]` to clear; omit to leave unchanged.',
               examples: [
                 ['--model', 'meta-llama/Llama-3-8B', '--max-model-len', '8192'],
               ],
@@ -3641,7 +3625,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n",
+                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.",
               examples: [['/bin/bash', '-c']],
             },
             disk: {
@@ -3704,7 +3688,7 @@ export const generatedTools: GeneratedTool[] = [
               type: 'array',
               minItems: 1,
               description:
-                'Serverless GPU pool IDs (as returned by `GET /v2/catalog/gpus` in\n`pool`). Workers are placed on whichever listed pool has capacity.\nNarrow a pool down to specific cards with `excludedTypes`.\n\nOn `PATCH`, `pools` and `excludedTypes` are one selection and are\nreplaced together, so sending `pools` by itself **clears the\nexclusions**. Two cases:\n\n- **Changing pools, keeping exclusions** — send both fields in one\n  request: `{"gpu": {"pools": ["ADA_24"], "excludedTypes":\n  ["NVIDIA L40"]}}`. `GET` the endpoint first to read the current\n  `excludedTypes` and resend the ones that still apply to the new\n  pools; an exclusion naming a type outside `pools` is a 400.\n- **Changing only `count` or a CUDA constraint** — omit `pools`:\n  `{"gpu": {"minCudaVersion": "12.4"}}`. The pool list and the\n  exclusions are both left exactly as they are.\n\n`excludedTypes` documents the full rule.\n',
+                'Serverless GPU pool IDs (the `pool` field of `list-gpu-types`). Workers are placed on whichever listed pool has capacity; narrow to specific cards with `excludedTypes`. On update, `pools` and `excludedTypes` are replaced together, so sending `pools` alone clears the exclusions.',
               items: {
                 type: 'string',
               },
@@ -3714,7 +3698,7 @@ export const generatedTools: GeneratedTool[] = [
               type: 'array',
               uniqueItems: true,
               description:
-                'GPU **type** IDs to subtract from the selected pools — the `id`\nfield of `GET /v2/catalog/gpus`, the same identifiers pods take in\n`gpu.id`. Workers run on every type in `pools` except these. Omit to\nuse the whole pool.\n\nPools stay the unit of selection; types are the unit of\nsubtraction. There is no inclusive allowlist: a card later added to\none of your pools becomes eligible, which is the honest reading of\n"this pool, minus these".\n\nTied to `pools`, because the two together are one selection:\nsupplying `pools` replaces that selection wholesale, so a `PATCH`\nsending `pools` **without `excludedTypes`** **clears** them —\nrestate them to keep them. A `PATCH` that omits `pools` leaves both\nthe pools and the exclusions untouched, so changing only a CUDA\nconstraint cannot widen a pinned endpoint.\n\nRejected with 400 if a value is not a GPU type in one of `pools`;\nupstream accepts unrecognized exclusions silently, so a typo would\notherwise produce a filter that does nothing. Surrounding whitespace\nis trimmed, so `" NVIDIA L40"` and `"NVIDIA L40"` mean the same card.\n',
+                'GPU type IDs to subtract from the selected pools — the `id` field of `list-gpu-types`, the same identifiers pods take in `gpu.id`. Workers run on every type in `pools` except these; omit to use the whole pool. A value outside `pools` is rejected. On update, restate them whenever you send `pools`, or they are cleared.',
               items: {
                 type: 'string',
                 pattern: '^\\s*[^-\\s]',
@@ -3731,8 +3715,6 @@ export const generatedTools: GeneratedTool[] = [
           },
         },
         ContainerConfig: {
-          description:
-            'Reusable container configuration shared across templates, pods, and serverless endpoints. Adding a field here automatically propagates to all three resources.\n',
           allOf: [
             {
               $ref: '#/$defs/BaseContainerConfig',
@@ -3760,7 +3742,7 @@ export const generatedTools: GeneratedTool[] = [
         },
         EndpointScaling: {
           description:
-            "Autoscaling signal — a discriminated union on `type`: `QUEUE_DELAY`\n(queue-based endpoints only) or `REQUEST_COUNT`. The scaler is chosen\nindependently of the endpoint's routing `type` and can be switched on\nupdate.\n",
+            "Autoscaling signal — a discriminated union on `type`: `QUEUE_DELAY` (queue-based endpoints only) or `REQUEST_COUNT`. The scaler is chosen independently of the endpoint's routing `type` and can be switched on update.",
           oneOf: [
             {
               $ref: '#/$defs/QueueDelayScaling',
@@ -3798,7 +3780,7 @@ export const generatedTools: GeneratedTool[] = [
               minimum: 1,
               maximum: 3600,
               description:
-                'Seconds before idle workers scale down. Not applicable to queue-based\nendpoints scaling on `requestCount` — rejected on create/update and\nomitted from responses for that combination.\n',
+                'Seconds before idle workers scale down. Not applicable to queue-based endpoints scaling on `requestCount` — rejected on create/update and omitted from responses for that combination.',
               examples: [5],
             },
           },
@@ -3806,7 +3788,7 @@ export const generatedTools: GeneratedTool[] = [
         FlashBoot: {
           type: 'string',
           description:
-            'FlashBoot cold-start acceleration mode.\n- `OFF`                — disabled\n- `FLASHBOOT`          — enabled\n- `PRIORITY_FLASHBOOT` — enabled with priority capacity\n',
+            'FlashBoot cold-start acceleration mode. `OFF` — disabled. `FLASHBOOT` — enabled. `PRIORITY_FLASHBOOT` — enabled with priority capacity',
           enum: ['OFF', 'FLASHBOOT', 'PRIORITY_FLASHBOOT'],
         },
         QueueDelayScaling: {
@@ -3835,7 +3817,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'object',
           additionalProperties: false,
           description:
-            'Scale on concurrent in-flight requests per worker. Required for\nload-balancing endpoints; also selectable for queue-based.\n',
+            'Scale on concurrent in-flight requests per worker. Required for load-balancing endpoints; also selectable for queue-based.',
           required: ['type', 'requestCount'],
           properties: {
             type: {
@@ -3855,10 +3837,12 @@ export const generatedTools: GeneratedTool[] = [
         },
         UpdateEndpointGpuConfig: {
           description:
-            'Partial GPU update — every field is optional and an omitted one is left\nunchanged. Unlike create, `pools` is optional, so changing only a CUDA\nconstraint does not require resending the pool list.\n\n`excludedTypes` requires `pools`, because the two are one selection and\nonly a supplied `pools` replaces it — an exclusion on its own would\notherwise be silently dropped.\n',
+            'Partial GPU update — every field is optional and an omitted one is left unchanged. `pools` is optional here, so a CUDA-only change does not resend the pool list; `excludedTypes` needs `pools` in the same request, and `pools` sent alone clears the exclusions.',
           allOf: [
             {
               $ref: '#/$defs/BaseEndpointGpuConfig',
+              description:
+                'Partial GPU update — every field is optional and an omitted one is left unchanged. `pools` is optional here, so a CUDA-only change does not resend the pool list; `excludedTypes` needs `pools` in the same request, and `pools` sent alone clears the exclusions.',
             },
             {
               type: 'object',
@@ -3873,16 +3857,18 @@ export const generatedTools: GeneratedTool[] = [
                     pattern: '^\\d+\\.\\d+$',
                   },
                   description:
-                    'Acceptable CUDA versions for worker placement, as\n`major.minor`. An explicit `[]` clears the constraint;\nomitting the field leaves it unchanged. Takes effect as\nworkers are replaced.\n\nA non-empty set is mutually exclusive with minCudaVersion (400\nif both are sent). An explicit `[]` states no constraint, so it\nmay accompany a floor.\nSetting one does not clear the other — clear it explicitly in\nthe same patch if the endpoint already carries it.\n',
+                    'Acceptable CUDA versions for worker placement, as `major.minor`. An explicit `[]` clears the constraint; omitting the field leaves it unchanged. A non-empty set cannot be sent with minCudaVersion, and setting one does not clear the other: clear the other explicitly in the same patch. Takes effect as workers are replaced.',
                 },
                 minCudaVersion: {
                   type: 'string',
                   pattern: '^$|^\\d+\\.\\d+$',
                   description:
-                    'Lowest acceptable CUDA version for worker placement, as\n`major.minor`. An explicit `""` clears the floor; omitting the\nfield leaves it unchanged. Takes effect as workers are\nreplaced.\n\nMutually exclusive with a non-empty allowedCudaVersions (400 if\nboth are sent); an explicit `[]` there states no constraint and\nmay accompany this floor.\n',
+                    'Lowest acceptable CUDA version for worker placement, as `major.minor`. An explicit `""` clears the floor; omitting the field leaves it unchanged. Cannot be sent with a non-empty allowedCudaVersions (an explicit `[]` there is fine); clear that explicitly in the same patch if the endpoint carries one. Takes effect as workers are replaced.',
                   examples: ['12.1'],
                 },
               },
+              description:
+                'Partial GPU update — every field is optional and an omitted one is left unchanged. `pools` is optional here, so a CUDA-only change does not resend the pool list; `excludedTypes` needs `pools` in the same request, and `pools` sent alone clears the exclusions.',
             },
           ],
           unevaluatedProperties: false,
@@ -3901,7 +3887,7 @@ export const generatedTools: GeneratedTool[] = [
                   minItems: 1,
                   uniqueItems: true,
                   description:
-                    'Complete replacement CPU selection. Valid only for an existing CPU\nendpoint; endpoint compute family cannot be changed.\n',
+                    'Complete replacement CPU selection. Valid only for an existing CPU endpoint; endpoint compute family cannot be changed.',
                   items: {
                     $ref: '#/$defs/CreateCpuConfig',
                   },
@@ -3936,7 +3922,7 @@ export const generatedTools: GeneratedTool[] = [
                 templateId: {
                   type: 'string',
                   description:
-                    "ID of a serverless template whose container settings are\napplied as if they were provided in this PATCH body (image,\nargs, disk, ports, env, registry). Explicit body fields\noverride the template's; `env` merges template and body per\nkey (body wins) and, per PATCH semantics, replaces the\nendpoint's env. One-time application — no link to the\ntemplate is retained. Must be one of your templates or a\npublic template (unknown or inaccessible ID → 404); must be\na serverless template (→ 422).\n",
+                    "ID of a serverless template whose container settings (image, args, disk, ports, env, registry) are applied as if sent in this PATCH body; explicit body fields win. `env` merges template and body per key (body wins) and replaces the endpoint's existing env. Applied once; must be a serverless template you can access.",
                   examples: ['30zmvf89kd'],
                 },
                 timeout: {
@@ -3991,7 +3977,7 @@ export const generatedTools: GeneratedTool[] = [
           additionalProperties: false,
           minProperties: 1,
           description:
-            'Only the provided fields are updated. At least one field must be\npresent; an empty body is rejected.\n',
+            'Only the provided fields are updated. At least one field must be present; an empty body is rejected.',
           properties: {
             name: {
               type: 'string',
@@ -4004,7 +3990,7 @@ export const generatedTools: GeneratedTool[] = [
               minimum: 10,
               maximum: 4096,
               description:
-                'New size in GB. Must be greater than or equal to the current size —\nnetwork volume storage cannot be reduced.\n',
+                'New size in GB. Must be greater than or equal to the current size — network volume storage cannot be reduced.',
               examples: [100],
             },
           },
@@ -4047,13 +4033,11 @@ export const generatedTools: GeneratedTool[] = [
       $defs: {
         BaseContainerConfig: {
           type: 'object',
-          description:
-            'Container configuration universal to every containerized resource. Compose ContainerConfig instead unless the resource cannot support a direct registry credential (clusters — there the registry credential arrives via a pod template, see CreateClusterRequest.templateId).\n',
           properties: {
             args: {
               type: 'string',
               description:
-                'The container\'s command, as a single raw string. This is the field `entrypoint` and `cmd` encode into, exposed in its stored form.\n\nTwo shapes are accepted. A bare shell string is treated as CMD and split into arguments, which is what the console\'s "Container start command" field writes. A JSON object of the form `{"entrypoint":[...],"cmd":[...]}` sets either or both explicitly.\n\nResponses always return both representations: `args` exactly as stored, plus the deconstructed `entrypoint` and `cmd`. Supplying `args` together with `entrypoint` or `cmd` is allowed only when they describe the same command, so a read-modify-write client can send back everything it received. Send `""` to clear, omit to leave unchanged.\n',
+                'The container\'s command as one raw string: a bare shell string is treated as CMD and split into arguments; a JSON object `{"entrypoint":[...],"cmd":[...]}` sets either or both. Send `""` to clear; omit to leave unchanged.',
               examples: [
                 '--model meta-llama/Llama-3-8B --max-model-len 8192',
                 '{"entrypoint":["/bin/bash","-c"],"cmd":["python -u main.py"]}',
@@ -4066,7 +4050,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                'Container CMD in exec form. When the image defines an ENTRYPOINT, this is the argument list passed to it. Encoded into the `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n',
+                'Container CMD in exec form: when the image defines an ENTRYPOINT, the argument list passed to it. Encoded into `args`; supply both only when they describe the same command. Send `[]` to clear; omit to leave unchanged.',
               examples: [
                 ['--model', 'meta-llama/Llama-3-8B', '--max-model-len', '8192'],
               ],
@@ -4077,7 +4061,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n",
+                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.",
               examples: [['/bin/bash', '-c']],
             },
             disk: {
@@ -4114,8 +4098,6 @@ export const generatedTools: GeneratedTool[] = [
           },
         },
         ContainerConfig: {
-          description:
-            'Reusable container configuration shared across templates, pods, and serverless endpoints. Adding a field here automatically propagates to all three resources.\n',
           allOf: [
             {
               $ref: '#/$defs/BaseContainerConfig',
@@ -4137,7 +4119,7 @@ export const generatedTools: GeneratedTool[] = [
           type: 'object',
           additionalProperties: false,
           description:
-            'Storage mounts attached to a pod. At-most-one of `persistent` or\n`network` may be set today (mutually exclusive, enforced at the\nhandler with 400 if both are present). The `network` field is an\narray for forward compatibility with eventual multi-network-volume\nsupport, but `maxItems` is 1 today.\n\nPATCH semantics:\n- Omitting `mounts` or sending `{}` leaves the existing mount\n  unchanged.\n- An explicit `network: []` is rejected with 400 (clearing mounts\n  is not supported).\n- Mount kind is fixed at create — a PATCH that introduces a kind\n  not present at create (persistent on a network pod, network on\n  a persistent pod, or any mount on a previously-mountless pod)\n  is rejected with 400.\n- The `volumeId` of a network mount is immutable; a PATCH that\n  names a different `volumeId` is rejected with 400.\n- Partial mounts are not supported — every mount entry must\n  include the full schema (`size` + `path` for persistent,\n  `volumeId` + `path` for network). Missing required fields → 422.\n',
+            "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
           properties: {
             persistent: {
               $ref: '#/$defs/PersistentMount',
@@ -4156,7 +4138,7 @@ export const generatedTools: GeneratedTool[] = [
           required: ['volumeId', 'path'],
           additionalProperties: false,
           description:
-            'Reference to a NetworkVolume. Custom paths are honored at runtime on\nboth GPU and CPU pods. The underlying `volumeId` is immutable\npost-create; the mount `path` may be changed via PATCH.\n',
+            'Reference to a NetworkVolume. Custom paths are honored at runtime on both GPU and CPU pods. The underlying `volumeId` is immutable post-create; the mount `path` may be changed via PATCH.',
           properties: {
             volumeId: {
               type: 'string',
@@ -4177,7 +4159,7 @@ export const generatedTools: GeneratedTool[] = [
           required: ['size', 'path'],
           additionalProperties: false,
           description:
-            "Host-local persistent storage. Pinned to the pod's host machine — data\ndoes not survive a host failure. Disallowed on CPU pods. Mutually\nexclusive with NetworkMount. Deprecated: prefer NetworkMount for any\ndata you cannot recreate.\n",
+            "Host-local persistent storage. Pinned to the pod's host machine — data does not survive a host failure. Disallowed on CPU pods. Mutually exclusive with NetworkMount. Deprecated: prefer NetworkMount for any data you cannot recreate.",
           properties: {
             size: {
               type: 'integer',
@@ -4205,7 +4187,7 @@ export const generatedTools: GeneratedTool[] = [
                 globalNetworking: {
                   type: 'boolean',
                   description:
-                    'Enable (true) or disable (false) global networking. Takes effect on the next pod start/restart, not live. Requires an NVIDIA GPU and a global-networking-enabled data center (both enforced upstream). See `GET /v2/catalog/datacenters` (`globalNetwork`) for eligible data centers.',
+                    'Enable (true) or disable (false) global networking. Takes effect on the next pod start/restart, not live. Requires an NVIDIA GPU and a global-networking-enabled data center (both enforced upstream).',
                 },
                 locked: {
                   type: 'boolean',
@@ -4222,7 +4204,7 @@ export const generatedTools: GeneratedTool[] = [
                 templateId: {
                   type: 'string',
                   description:
-                    "ID of a pod template whose container settings are applied as\nif they were provided in this PATCH body (image, args, disk,\nports, env, registry — mounts are not applied on update).\nExplicit body fields override the template's; `env` merges\ntemplate and body per key (body wins) and, per PATCH\nsemantics, replaces the pod's env. One-time application —\nno link to the template is retained. Must be one of your\ntemplates or a public template (unknown or inaccessible ID\n→ 404); must not be a serverless template (→ 422).\n",
+                    "ID of a pod template whose container settings (image, args, disk, ports, env, registry; not mounts) are applied as if sent in this PATCH body; explicit body fields win. `env` merges template and body per key (body wins) and replaces the pod's existing env. Applied once; must be a non-serverless template you can access.",
                   examples: ['30zmvf89kd'],
                 },
               },
@@ -4271,7 +4253,7 @@ export const generatedTools: GeneratedTool[] = [
           additionalProperties: false,
           minProperties: 1,
           description:
-            "Only the provided fields are updated; at least one field is required.\nThe secret's `name` is immutable.\n",
+            "Only the provided fields are updated; at least one field is required. The secret's `name` is immutable.",
           properties: {
             value: {
               type: 'string',
@@ -4327,7 +4309,7 @@ export const generatedTools: GeneratedTool[] = [
                 pattern: '^(ssh|ecdsa|sk)-[^\\s]+ [^\\s]+([ \\t][^\\n\\r]*)?$',
               },
               description:
-                "The full set of SSH public keys to register — this is a complete\nreplacement, not a merge. Each entry is an authorized_keys-style\nline: `<type> <base64-key> [comment]`, e.g. from\n`~/.ssh/id_ed25519.pub`. Send `[]` to remove all keys. These keys\nare provisioned into pods created with `startSsh` and\nauthenticate both SSH paths reported in the pod's `ssh` block.\n",
+                'The full set of SSH public keys to register — this is a complete replacement, not a merge. Each entry is an authorized_keys-style line: `<type> <base64-key> [comment]`, e.g. from `~/.ssh/id_ed25519.pub`. Send `[]` to remove all keys.',
               examples: [
                 [
                   'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILXGDN/SclOozk1xsDztpmhGiKkkrfQB9SKoO8dSIQQZ me@example.com',
@@ -4373,13 +4355,11 @@ export const generatedTools: GeneratedTool[] = [
       $defs: {
         BaseContainerConfig: {
           type: 'object',
-          description:
-            'Container configuration universal to every containerized resource. Compose ContainerConfig instead unless the resource cannot support a direct registry credential (clusters — there the registry credential arrives via a pod template, see CreateClusterRequest.templateId).\n',
           properties: {
             args: {
               type: 'string',
               description:
-                'The container\'s command, as a single raw string. This is the field `entrypoint` and `cmd` encode into, exposed in its stored form.\n\nTwo shapes are accepted. A bare shell string is treated as CMD and split into arguments, which is what the console\'s "Container start command" field writes. A JSON object of the form `{"entrypoint":[...],"cmd":[...]}` sets either or both explicitly.\n\nResponses always return both representations: `args` exactly as stored, plus the deconstructed `entrypoint` and `cmd`. Supplying `args` together with `entrypoint` or `cmd` is allowed only when they describe the same command, so a read-modify-write client can send back everything it received. Send `""` to clear, omit to leave unchanged.\n',
+                'The container\'s command as one raw string: a bare shell string is treated as CMD and split into arguments; a JSON object `{"entrypoint":[...],"cmd":[...]}` sets either or both. Send `""` to clear; omit to leave unchanged.',
               examples: [
                 '--model meta-llama/Llama-3-8B --max-model-len 8192',
                 '{"entrypoint":["/bin/bash","-c"],"cmd":["python -u main.py"]}',
@@ -4392,7 +4372,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                'Container CMD in exec form. When the image defines an ENTRYPOINT, this is the argument list passed to it. Encoded into the `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n',
+                'Container CMD in exec form: when the image defines an ENTRYPOINT, the argument list passed to it. Encoded into `args`; supply both only when they describe the same command. Send `[]` to clear; omit to leave unchanged.',
               examples: [
                 ['--model', 'meta-llama/Llama-3-8B', '--max-model-len', '8192'],
               ],
@@ -4403,7 +4383,7 @@ export const generatedTools: GeneratedTool[] = [
                 type: 'string',
               },
               description:
-                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.\n",
+                "Container ENTRYPOINT in exec form, overriding the image's own. Encoded into `args` field; supplying both is allowed only when they describe the same command. Send `[]` to clear, omit to leave unchanged.",
               examples: [['/bin/bash', '-c']],
             },
             disk: {
@@ -4440,8 +4420,6 @@ export const generatedTools: GeneratedTool[] = [
           },
         },
         ContainerConfig: {
-          description:
-            'Reusable container configuration shared across templates, pods, and serverless endpoints. Adding a field here automatically propagates to all three resources.\n',
           allOf: [
             {
               $ref: '#/$defs/BaseContainerConfig',
@@ -4464,7 +4442,7 @@ export const generatedTools: GeneratedTool[] = [
           required: ['size', 'path'],
           additionalProperties: false,
           description:
-            "Host-local persistent storage. Pinned to the pod's host machine — data\ndoes not survive a host failure. Disallowed on CPU pods. Mutually\nexclusive with NetworkMount. Deprecated: prefer NetworkMount for any\ndata you cannot recreate.\n",
+            "Host-local persistent storage. Pinned to the pod's host machine — data does not survive a host failure. Disallowed on CPU pods. Mutually exclusive with NetworkMount. Deprecated: prefer NetworkMount for any data you cannot recreate.",
           properties: {
             size: {
               type: 'integer',
@@ -4484,14 +4462,14 @@ export const generatedTools: GeneratedTool[] = [
         TemplateCategory: {
           type: 'string',
           description:
-            'Controls how the template is grouped and filtered in the Runpod console.\nIt does not affect hardware selection, scheduling, or billing.\n- `CPU`    — CPU-only workloads\n- `NVIDIA` — NVIDIA GPU workloads\n- `AMD`    — AMD GPU workloads\n',
+            'Controls how the template is grouped and filtered in the Runpod console. It does not affect hardware selection, scheduling, or billing. `CPU` — CPU-only workloads. `NVIDIA` — NVIDIA GPU workloads. `AMD` — AMD GPU workloads',
           enum: ['CPU', 'NVIDIA', 'AMD'],
         },
         TemplateMounts: {
           type: 'object',
           additionalProperties: false,
           description:
-            'Storage mounts attached to a template. Templates support only a\nsingle persistent mount today; any `network` property is rejected\nwith 422 by the schema validator.\n\nPATCH semantics: omitting `mounts` or sending `{}` leaves the\nexisting mount unchanged.\n',
+            'Storage mounts for containers from this template: a single `persistent` mount only (`network` is rejected). On update, omitting `mounts` or sending `{}` leaves the existing mount unchanged.',
           properties: {
             persistent: {
               $ref: '#/$defs/PersistentMount',

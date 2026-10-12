@@ -350,3 +350,70 @@ test('generation freshness check rejects stale schemas and config without writin
     rmSync(temp, { recursive: true, force: true });
   }
 });
+
+// Every byte below is sent on every client handshake and sits in the agent's
+// context for the whole session. The budgets pin today's surface so a spec
+// pull or a new tool cannot regrow it unnoticed; raise one only with the
+// reason in the PR.
+const GENERATED_SURFACE_BUDGET_BYTES = 102_000;
+const CURATED_SURFACE_BUDGET_BYTES = 30_000;
+const ARGUMENT_DESCRIPTION_CAP_BYTES = 400;
+
+type Served = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations: unknown;
+};
+const served = (tools: Served[]) =>
+  tools.map(({ name, description, inputSchema, annotations }) => ({
+    name,
+    description,
+    inputSchema,
+    annotations,
+  }));
+const servedBytes = (tools: Served[]) =>
+  Buffer.byteLength(JSON.stringify(served(tools)));
+
+function longArgumentDescriptions(tools: Served[]): string[] {
+  const offenders: string[] = [];
+  const walk = (node: unknown, at: string) => {
+    if (Array.isArray(node)) {
+      node.forEach((child, i) => walk(child, `${at}[${i}]`));
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'description' && typeof value === 'string') {
+        const bytes = Buffer.byteLength(value);
+        if (bytes > ARGUMENT_DESCRIPTION_CAP_BYTES)
+          offenders.push(`${at} (${bytes} B)`);
+      } else walk(value, `${at}.${key}`);
+    }
+  };
+  for (const tool of tools) walk(tool.inputSchema, tool.name);
+  return offenders;
+}
+
+test('the served tool surface stays within its byte budgets', () => {
+  const generated = servedBytes(generatedTools);
+  const curated = servedBytes(curatedTools);
+  assert.ok(
+    generated <= GENERATED_SURFACE_BUDGET_BYTES,
+    `generated tools serialize to ${generated} B, budget ${GENERATED_SURFACE_BUDGET_BYTES} B`
+  );
+  assert.ok(
+    curated <= CURATED_SURFACE_BUDGET_BYTES,
+    `curated tools serialize to ${curated} B, budget ${CURATED_SURFACE_BUDGET_BYTES} B`
+  );
+});
+
+test('no argument description exceeds the per-field cap', () => {
+  assert.deepEqual(
+    [
+      ...longArgumentDescriptions(generatedTools),
+      ...longArgumentDescriptions(curatedTools),
+    ],
+    []
+  );
+});

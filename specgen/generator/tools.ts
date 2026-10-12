@@ -4,11 +4,16 @@ import type {
   GeneratedToolParam,
   ToolAnnotations,
 } from '#src/specgen/generated/tools.gen';
+import { compactDescription, type OperationNameLookup } from './prose.js';
 
 export interface GeneratorConfig {
   exclude?: Record<string, { replacedBy?: string; reason: string }>;
   rename?: Record<string, string>;
   descriptions?: Record<string, string>;
+  /** Schema address -> description served instead of the spec's. Addresses are
+   *  `DefName`, `DefName.prop` (composition is transparent, `[]` for items),
+   *  `operationId.param`, or `operationId.body(.prop)`. */
+  propertyDescriptions?: Record<string, string>;
   /** operationId -> hints for tools whose HTTP method understates what they do. */
   annotations?: Record<string, Partial<ToolAnnotations>>;
 }
@@ -69,33 +74,54 @@ const schemaChildren = new Set([
   'else',
 ]);
 
+const joinAddress = (parent: string, name: string) =>
+  parent ? `${parent}.${name}` : name;
+
+function childAddress(key: string, address: string): string {
+  if (key === 'items') return `${address}[]`;
+  if (key === 'additionalProperties') return joinAddress(address, '*');
+  return address;
+}
+
 // Walk schema positions only. An enum, default, example or property name may
-// contain text that looks like prose or a reference; those are API data.
+// contain text that looks like prose or a reference; those are API data. The
+// address names a position for overrides: definitions restart it, properties
+// extend it, composition keywords pass it through unchanged.
 function mapSchema(
   node: unknown,
-  map: (schema: Record<string, unknown>) => Record<string, unknown>
+  map: (
+    schema: Record<string, unknown>,
+    address: string
+  ) => Record<string, unknown>,
+  address = ''
 ): unknown {
   if (!node || typeof node !== 'object' || Array.isArray(node)) return node;
   const schema = Object.fromEntries(
     Object.entries(node).map(([key, value]) => {
       if (schemaMaps.has(key) && value && typeof value === 'object') {
+        const definitions = key === '$defs' || key === 'definitions';
         return [
           key,
           Object.fromEntries(
             Object.entries(value).map(([name, child]) => [
               name,
-              mapSchema(child, map),
+              mapSchema(
+                child,
+                map,
+                definitions ? name : joinAddress(address, name)
+              ),
             ])
           ),
         ];
       }
       if (schemaArrays.has(key) && Array.isArray(value))
-        return [key, value.map((child) => mapSchema(child, map))];
-      if (schemaChildren.has(key)) return [key, mapSchema(value, map)];
+        return [key, value.map((child) => mapSchema(child, map, address))];
+      if (schemaChildren.has(key))
+        return [key, mapSchema(value, map, childAddress(key, address))];
       return [key, value];
     })
   );
-  return map(schema);
+  return map(schema, address);
 }
 
 function rewriteRef(ref: string): string {
@@ -104,31 +130,54 @@ function rewriteRef(ref: string): string {
     : ref;
 }
 
-function normalizeSchema(node: unknown): unknown {
-  return mapSchema(node, (schema) => {
-    for (const key of ['description', 'title']) {
-      if (typeof schema[key] === 'string') schema[key] = prose(schema[key]);
-    }
-    for (const key of ['$ref', '$dynamicRef']) {
-      if (typeof schema[key] === 'string')
-        schema[key] = rewriteRef(schema[key]);
-    }
-    const discriminator = schema.discriminator as
-      | { mapping?: Record<string, string> }
-      | undefined;
-    if (discriminator?.mapping) {
-      schema.discriminator = {
-        ...discriminator,
-        mapping: Object.fromEntries(
-          Object.entries(discriminator.mapping).map(([key, ref]) => [
-            key,
-            rewriteRef(ref),
-          ])
-        ),
-      };
-    }
-    return schema;
-  });
+interface ProseContext {
+  compact: (text: string) => string;
+  overrides: Record<string, string>;
+  usedOverrides: Set<string>;
+  // Reached only through allOf: the root description is a note about schema
+  // composition, not about any argument.
+  compositionDefs: Set<string>;
+}
+
+function normalizeSchema(
+  node: unknown,
+  address: string,
+  context: ProseContext
+): unknown {
+  return mapSchema(
+    node,
+    (schema, at) => {
+      if (typeof schema.title === 'string') schema.title = prose(schema.title);
+      const override = context.overrides[at];
+      if (override !== undefined) {
+        schema.description = override;
+        context.usedOverrides.add(at);
+      } else if (typeof schema.description === 'string') {
+        if (context.compositionDefs.has(at)) delete schema.description;
+        else schema.description = context.compact(prose(schema.description));
+      }
+      for (const key of ['$ref', '$dynamicRef']) {
+        if (typeof schema[key] === 'string')
+          schema[key] = rewriteRef(schema[key]);
+      }
+      const discriminator = schema.discriminator as
+        | { mapping?: Record<string, string> }
+        | undefined;
+      if (discriminator?.mapping) {
+        schema.discriminator = {
+          ...discriminator,
+          mapping: Object.fromEntries(
+            Object.entries(discriminator.mapping).map(([key, ref]) => [
+              key,
+              rewriteRef(ref),
+            ])
+          ),
+        };
+      }
+      return schema;
+    },
+    address
+  );
 }
 
 function pointerName(ref: string, prefix: string): string {
@@ -231,6 +280,66 @@ function annotationsFor(method: string): ToolAnnotations {
   };
 }
 
+const SCHEMA_PREFIX = '#/components/schemas/';
+
+function compositionOnlyDefs(spec: SpecDocument): Set<string> {
+  const uses = new Map<string, { allOf: number; other: number }>();
+  const note = (ref: unknown, inAllOf: boolean) => {
+    if (typeof ref !== 'string' || !ref.startsWith(SCHEMA_PREFIX)) return;
+    const name = pointerName(ref, SCHEMA_PREFIX);
+    const use = uses.get(name) ?? { allOf: 0, other: 0 };
+    if (inAllOf) use.allOf += 1;
+    else use.other += 1;
+    uses.set(name, use);
+  };
+  const walk = (node: unknown, inAllOf: boolean) => {
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child, inAllOf);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === '$ref') note(value, inAllOf);
+      else if (key === 'allOf' && Array.isArray(value))
+        for (const child of value) walk(child, true);
+      else walk(value, false);
+    }
+  };
+  walk(spec.components ?? {}, false);
+  walk(spec.paths, false);
+  return new Set(
+    [...uses]
+      .filter(([, use]) => use.allOf > 0 && use.other === 0)
+      .map(([name]) => name)
+  );
+}
+
+function toolName(operationId: string, config: GeneratorConfig): string {
+  return (
+    config.rename?.[operationId] ??
+    operationId.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+  );
+}
+
+function operationNames(
+  spec: SpecDocument,
+  config: GeneratorConfig
+): OperationNameLookup {
+  const names = new Map<string, string>();
+  for (const [path, pathItem] of Object.entries(spec.paths)) {
+    for (const method of HTTP_METHODS) {
+      const op = pathItem[method];
+      if (!op?.operationId) continue;
+      const excluded = config.exclude?.[op.operationId];
+      const name = excluded
+        ? excluded.replacedBy
+        : toolName(op.operationId, config);
+      if (name) names.set(`${method.toUpperCase()} ${path}`, name);
+    }
+  }
+  return (method, path) => names.get(`${method} ${path}`);
+}
+
 function buildTool(
   path: string,
   method: string,
@@ -238,7 +347,8 @@ function buildTool(
   op: Operation,
   spec: SpecDocument,
   config: GeneratorConfig,
-  defs: Record<string, unknown>
+  defs: Record<string, unknown>,
+  context: ProseContext
 ): GeneratedTool {
   if (!op.operationId)
     throw new Error(`Missing operationId: ${method} ${path}`);
@@ -254,10 +364,14 @@ function buildTool(
       throw new Error(`Missing parameter name: ${op.operationId}`);
     if (Object.hasOwn(properties, param.name))
       throw new Error(`Ambiguous parameter ${param.name}: ${op.operationId}`);
-    properties[param.name] = normalizeSchema({
-      ...(param.schema as Record<string, unknown>),
-      ...(param.description ? { description: param.description } : {}),
-    });
+    properties[param.name] = normalizeSchema(
+      {
+        ...(param.schema as Record<string, unknown>),
+        ...(param.description ? { description: param.description } : {}),
+      },
+      `${op.operationId}.${param.name}`,
+      context
+    );
     if (param.required || param.in === 'path') required.push(param.name);
     params.push({
       name: param.name,
@@ -279,14 +393,16 @@ function buildTool(
       throw new Error(
         `Parameter conflicts with request body: ${op.operationId}`
       );
-    properties.body = normalizeSchema(bodySchema);
+    properties.body = normalizeSchema(
+      bodySchema,
+      `${op.operationId}.body`,
+      context
+    );
     if (requestBody?.required) required.push('body');
   }
   const $defs = reachableDefs({ type: 'object', properties }, defs);
   return {
-    name:
-      config.rename?.[op.operationId] ??
-      op.operationId.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase(),
+    name: toolName(op.operationId, config),
     operationId: op.operationId,
     description:
       config.descriptions?.[op.operationId] ??
@@ -318,10 +434,17 @@ export function generateTools(
   spec: SpecDocument,
   config: GeneratorConfig = {}
 ): GeneratedTool[] {
+  const lookup = operationNames(spec, config);
+  const context: ProseContext = {
+    compact: (text) => compactDescription(text, lookup),
+    overrides: config.propertyDescriptions ?? {},
+    usedOverrides: new Set(),
+    compositionDefs: compositionOnlyDefs(spec),
+  };
   const defs = Object.fromEntries(
     Object.entries(spec.components?.schemas ?? {}).map(([name, schema]) => [
       name,
-      normalizeSchema(schema),
+      normalizeSchema(schema, name, context),
     ])
   );
   const tools: GeneratedTool[] = [];
@@ -337,7 +460,16 @@ export function generateTools(
         continue;
       }
       unmatchedAnnotations.delete(op.operationId);
-      const tool = buildTool(path, method, pathItem, op, spec, config, defs);
+      const tool = buildTool(
+        path,
+        method,
+        pathItem,
+        op,
+        spec,
+        config,
+        defs,
+        context
+      );
       if (names.has(tool.name))
         throw new Error(`Duplicate tool name: ${tool.name}`);
       names.add(tool.name);
@@ -351,6 +483,13 @@ export function generateTools(
   if (unmatchedAnnotations.size)
     throw new Error(
       `Annotated operations missing from spec: ${[...unmatchedAnnotations].sort().join(', ')}`
+    );
+  const unmatchedOverrides = Object.keys(context.overrides).filter(
+    (address) => !context.usedOverrides.has(address)
+  );
+  if (unmatchedOverrides.length)
+    throw new Error(
+      `Property description overrides missing from spec: ${unmatchedOverrides.sort().join(', ')}`
     );
   return tools.sort((a, b) => a.name.localeCompare(b.name));
 }
