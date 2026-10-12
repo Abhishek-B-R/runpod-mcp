@@ -4,12 +4,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import {
-  createSpecgenServer,
-  SERVER_INSTRUCTIONS,
-} from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
-import { guideResources } from '../src/specgen/tools/knowledge.js';
+import { createSpecgenServer, SERVER_INSTRUCTIONS } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
+import { guideResources } from '#src/specgen/tools/knowledge';
 
 async function connect() {
   const server = createSpecgenServer(

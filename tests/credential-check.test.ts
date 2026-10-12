@@ -2,12 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IncomingMessage, ServerResponse } from 'node:http';
 
-import { createCredentialChecker } from '../src/_shared/credential-check.js';
+import { createCredentialChecker } from '#src/_shared/credential-check';
 import {
   defaultCredentialChecker,
   handleMcpRequest,
   bodyIsCheckable,
-} from '../src/http.js';
+} from '#src/http';
 
 // ============== Credential pre-flight (hosted 401 re-auth) ==============
 // A dead bearer (expired/revoked OAuth-minted key) must produce a real HTTP

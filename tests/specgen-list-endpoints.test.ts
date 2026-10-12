@@ -1,9 +1,9 @@
 // The trimmed list overlays: drop fat fields, page on the server.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listTemplates } from '../src/specgen/tools/list-templates.js';
-import { listEndpoints } from '../src/specgen/tools/list-endpoints.js';
-import type { ToolContext } from '../src/specgen/context.js';
+import { listTemplates } from '#src/specgen/tools/list-templates';
+import { listEndpoints } from '#src/specgen/tools/list-endpoints';
+import type { ToolContext } from '#src/specgen/context';
 
 const endpoint = (id: number) => ({
   id: `ep_${id}`,

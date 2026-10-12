@@ -6,7 +6,7 @@ import {
   validatePkceAuthorization,
   validatePkceVerifier,
   verifyPkce,
-} from '../src/oauth/pkce.js';
+} from '#src/oauth/pkce';
 
 // RFC 7636 Appendix B canonical test vector.
 const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';

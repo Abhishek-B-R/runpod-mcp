@@ -3,10 +3,7 @@
 // specgen migration; _shared/tracking.ts is still live via specgen/context).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  sanitizeUaToken,
-  buildTrackingHeaders,
-} from '../src/_shared/tracking.js';
+import { sanitizeUaToken, buildTrackingHeaders } from '#src/_shared/tracking';
 
 describe('tracking headers', () => {
   it('sanitizeUaToken strips reserved chars and bounds length', () => {

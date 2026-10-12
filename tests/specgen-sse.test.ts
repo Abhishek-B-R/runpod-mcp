@@ -6,7 +6,7 @@ import {
   collectLogSnapshot,
   createSseReader,
   type SseReader,
-} from '../src/specgen/clients/sse.js';
+} from '#src/specgen/clients/sse';
 
 const frame = (line: string) =>
   `id: 1\ndata: ${JSON.stringify({ source: 'container', line, ts: 't' })}\n\n`;

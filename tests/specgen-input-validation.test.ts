@@ -5,9 +5,9 @@ import {
   runsyncEndpoint,
   STATUS_WAIT_MAX_MS,
   HOSTED,
-} from '../src/specgen/tools/jobs.js';
-import { buildHubEnv, deployHubRepo } from '../src/specgen/tools/hub.js';
-import type { ToolContext } from '../src/specgen/context.js';
+} from '#src/specgen/tools/jobs';
+import { buildHubEnv, deployHubRepo } from '#src/specgen/tools/hub';
+import type { ToolContext } from '#src/specgen/context';
 
 test('malformed waits fail before either job tool calls an API', async () => {
   let calls = 0;
@@ -200,8 +200,8 @@ test('Hub deployment refuses empty required defaults before any creation', async
 // inputSchema, so a new curated tool is covered the moment it declares one.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSpecgenServer } from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
+import { createSpecgenServer } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
 
 async function connectServer(alp?: { ingestUrl: string }) {
   const server = createSpecgenServer(
@@ -251,7 +251,10 @@ test('curated tools reject a missing required argument by name', async () => {
   assert.deepEqual(body.expected, ['podId']);
   // podId is a path param, not a body: an omission gets the generic recovery
   // hint the 400 path already attaches, never the stale-schema one.
-  assert.doesNotMatch(String(body.hint ?? ''), /cached from an earlier version/);
+  assert.doesNotMatch(
+    String(body.hint ?? ''),
+    /cached from an earlier version/
+  );
   await client.close();
 });
 

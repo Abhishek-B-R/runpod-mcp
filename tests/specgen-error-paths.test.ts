@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSpecgenServer } from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
-import { pollJobStatus } from '../src/specgen/tools/jobs.js';
-import { HttpError } from '../src/specgen/clients/http-error.js';
+import { createSpecgenServer } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
+import { pollJobStatus } from '#src/specgen/tools/jobs';
+import { HttpError } from '#src/specgen/clients/http-error';
 
 const calls = [
   { name: 'list-endpoints', arguments: {} },

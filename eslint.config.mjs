@@ -26,7 +26,29 @@ export default [
     },
   },
   {
-    ignores: ['dist/**', 'build/**', 'node_modules/**', 'convex/_generated/**', '*.js', '*.mjs'],
+    files: ['tests/**/*.ts', 'scripts/**/*.ts', 'specgen/generator/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../src/**', '../../src/**', '../../../src/**'],
+              message: "Import source modules through the '#src/...' alias.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    ignores: [
+      'dist/**',
+      'build/**',
+      'node_modules/**',
+      'convex/_generated/**',
+      '*.js',
+      '*.mjs',
+    ],
   },
 ];
-

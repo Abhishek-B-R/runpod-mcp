@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { rateLimitHint } from '../src/_shared/rate-limit.js';
+import { rateLimitHint } from '#src/_shared/rate-limit';
 
 // A bare "429 - rate limit exceeded" invites an immediate retry — the worst
 // response. (Observed live: a bulk GC burned the hourly quota and every delete

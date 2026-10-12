@@ -11,9 +11,9 @@ import { parse } from 'yaml';
 import { Ajv } from 'ajv';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { generatedTools } from '../src/specgen/generated/tools.gen.js';
-import { curatedTools, createSpecgenServer } from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
+import { generatedTools } from '#src/specgen/generated/tools.gen';
+import { curatedTools, createSpecgenServer } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
 
 const spec = parse(readFileSync('specgen/spec/openapi.yaml', 'utf8'));
 const config = parse(readFileSync('specgen/generator-config.yaml', 'utf8'));

@@ -6,10 +6,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSpecgenServer, curatedTools } from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
-import { generatedTools } from '../src/specgen/generated/tools.gen.js';
-import { knowledgeTools } from '../src/specgen/tools/knowledge.js';
+import { createSpecgenServer, curatedTools } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
+import { generatedTools } from '#src/specgen/generated/tools.gen';
+import { knowledgeTools } from '#src/specgen/tools/knowledge';
 
 const knowledgeToolNames = new Set(knowledgeTools.map((tool) => tool.name));
 

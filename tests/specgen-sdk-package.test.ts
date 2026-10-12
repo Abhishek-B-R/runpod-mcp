@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createToolContext } from '../src/specgen/context.js';
+import { createToolContext } from '#src/specgen/context';
 
 test('published SDK keeps API keys isolated across tool contexts', async (t) => {
   const keys: string[] = [];

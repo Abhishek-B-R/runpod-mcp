@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setEndpointGpus } from '../src/specgen/tools/endpoint-gpus.js';
-import { createToolContext } from '../src/specgen/context.js';
+import { setEndpointGpus } from '#src/specgen/tools/endpoint-gpus';
+import { createToolContext } from '#src/specgen/context';
 
 test('GPU selection sends a sparse REST update and preserves unrelated endpoint settings', async (t) => {
   const calls: Request[] = [];

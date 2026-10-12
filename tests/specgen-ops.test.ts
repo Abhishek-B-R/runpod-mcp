@@ -4,9 +4,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { callerId, noopRateLimiter } from '../src/specgen/ops.js';
-import { createSpecgenServer } from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
+import { callerId, noopRateLimiter } from '#src/specgen/ops';
+import { createSpecgenServer } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
 
 test('callerId is stable per token, distinct across tokens, never the token', () => {
   const a = callerId('rpa_secret_A');

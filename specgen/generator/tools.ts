@@ -3,7 +3,7 @@ import type {
   GeneratedTool,
   GeneratedToolParam,
   ToolAnnotations,
-} from '../../src/specgen/generated/tools.gen.js';
+} from '#src/specgen/generated/tools.gen';
 
 export interface GeneratorConfig {
   exclude?: Record<string, { replacedBy?: string; reason: string }>;

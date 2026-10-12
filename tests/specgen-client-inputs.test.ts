@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRunpodClient } from '@runpod/typescript-api-sdk';
-import { dispatchGeneratedTool } from '../src/specgen/dispatch.js';
-import { generatedTools } from '../src/specgen/generated/tools.gen.js';
-import { createRuntimeClient } from '../src/specgen/clients/runtime.js';
-import { HttpError } from '../src/specgen/clients/http-error.js';
+import { dispatchGeneratedTool } from '#src/specgen/dispatch';
+import { generatedTools } from '#src/specgen/generated/tools.gen';
+import { createRuntimeClient } from '#src/specgen/clients/runtime';
+import { HttpError } from '#src/specgen/clients/http-error';
 
 test('a null required path argument fails before any REST request', async () => {
   let requests = 0;
