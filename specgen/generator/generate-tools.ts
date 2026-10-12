@@ -50,6 +50,8 @@ export interface GeneratedTool {
   params: GeneratedToolParam[];
   hasBody: boolean;
   annotations: ToolAnnotations;
+  /** Listed with its call shape only; describe-tool serves the full schema. */
+  schemaOnDemand?: true;
   inputSchema: Record<string, unknown>;
 }
 

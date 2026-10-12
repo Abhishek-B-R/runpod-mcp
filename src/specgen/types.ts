@@ -15,6 +15,9 @@ export interface CuratedTool {
     ctx: ToolContext,
     args: Record<string, unknown>
   ) => Promise<ToolResult>;
+  /** tools/list carries only the call shape (src/specgen/on-demand.ts);
+   *  describe-tool serves the full schema, which still gates every call. */
+  schemaOnDemand?: boolean;
   /** Skip the argument-shape gate. Only for tools whose contract is to never
    *  return an error result (the ALP write tools): an unknown key there is
    *  ignored by the handler rather than rejected, by design. */

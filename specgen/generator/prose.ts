@@ -4,15 +4,14 @@
 // handshake. So: leading sentences up to a cap, output prose dropped, never a
 // cut inside a sentence. Hand-written versions live in `propertyDescriptions`.
 
+import { splitSentences } from '#src/specgen/prose';
+
 export const DESCRIPTION_CAP = 240;
 
 export type OperationNameLookup = (
   method: string,
   path: string
 ) => string | undefined;
-
-const ABBREVIATIONS = ['e.g.', 'i.e.', 'etc.', 'vs.'];
-const DOT = '\u0000';
 
 // Sentences that describe the response, the console, or the design rather
 // than the argument. Never applied to the first sentence.
@@ -26,20 +25,6 @@ const NOISE = [
   /read-modify-write/i,
   /documents the full rule/i,
 ];
-
-export function splitSentences(text: string): string[] {
-  let guarded = text;
-  for (const abbreviation of ABBREVIATIONS) {
-    guarded = guarded.replaceAll(
-      abbreviation,
-      abbreviation.replaceAll('.', DOT)
-    );
-  }
-  return guarded
-    .split(/(?<=[.!?])\s+(?=[A-Z`"'([])/)
-    .map((sentence) => sentence.replaceAll(DOT, '.').trim())
-    .filter(Boolean);
-}
 
 function flattenMarkdown(text: string): string {
   return text

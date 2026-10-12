@@ -293,7 +293,7 @@ src/specgen/tools/               Box 2: the 17 hand-written tools
 src/specgen/ops.ts               Box 2: log line + rate-limit stub
 src/specgen/generated/           Box 2: machine-written output (DO NOT EDIT)
 specgen/spec/openapi.yaml        Box 3: vendored production spec
-specgen/generator-config.yaml    Box 3: exclusions / description + argument overrides
+specgen/generator-config.yaml    Box 3: exclusions / description + argument overrides / on-demand schemas
 specgen/generator/               Box 3: the generator
 specgen/old-mcp-tools.yaml       parity map against the old 54-tool server
 scripts/check-spec-drift.ts      live-vs-vendored spec diff

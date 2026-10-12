@@ -373,3 +373,17 @@ test('property description overrides replace the spec text by address and reject
     /Property description overrides missing from spec: CreatePodRequest\.nope, Gone/
   );
 });
+
+test('schemaOnDemand flags the listed operations and rejects stale ids', () => {
+  const spec = bodySpec({ type: 'object' });
+  assert.equal(
+    generateTools(spec, { schemaOnDemand: ['createExample'] })[0]
+      .schemaOnDemand,
+    true
+  );
+  assert.equal(generateTools(spec)[0].schemaOnDemand, undefined);
+  assert.throws(
+    () => generateTools(spec, { schemaOnDemand: ['oldCreateName'] }),
+    /schemaOnDemand operations missing from spec: oldCreateName/
+  );
+});
