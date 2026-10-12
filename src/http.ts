@@ -8,7 +8,6 @@ import {
   type CredentialCheckerHandle,
 } from './_shared/credential-check.js';
 import type { HandleMcpRequestOptions, RpcSummary } from './types.js';
-export type { HandleMcpRequestOptions, RpcSummary } from './types.js';
 import {
   sdkBase,
   serverlessBase,
