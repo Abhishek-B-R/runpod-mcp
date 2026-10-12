@@ -27,7 +27,7 @@ The server communicates with two separate Runpod API backends. The REST v2 API a
 The source is split by responsibility:
 
 - `src/stdio.ts` is the local `stdio` entrypoint.
-- `src/http.ts` does bearer-token extraction and the per-request MCP session for the Streamable HTTP transport.
+- `src/http.ts` does bearer-token extraction and the per-request MCP session for the Streamable HTTP transport. It validates the request body once, at the boundary, with the SDK's Zod schemas (`parseMcpMessages`); everything after that works on typed messages, so a `typeof` check inside handler logic means validation happened too late.
 - `src/specgen/` is the tool surface — generated from the v2 OpenAPI spec plus a curated overlay; see `specgen/DESIGN.md`. There is one surface: stdio and hosted serve the same tools and skill resources.
 - `src/server.ts` owns the server name/version constants.
 - Tests, scripts and the specgen generator import source modules through the `#src/...` alias (`package.json` `imports`, mapped to `src/*.ts`, so the specifier is bare); a relative `../src` import there is a lint error. `api/` and `convex/` keep relative imports because Vercel and Convex bundle them with their own resolvers.
