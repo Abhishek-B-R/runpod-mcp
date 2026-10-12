@@ -37,7 +37,8 @@ async function connect(opts?: Parameters<typeof createSpecgenServer>[2]) {
 test('disabled means absent: no ALP config, no ALP tools in tools/list', async () => {
   const client = await connect();
   const { tools } = await client.listTools();
-  assert.equal(tools.length, generatedTools.length + curatedTools.length);
+  // + 1: describe-tool is served alongside the curated overlay.
+  assert.equal(tools.length, generatedTools.length + curatedTools.length + 1);
   for (const name of ALP_NAMES) {
     assert.ok(!tools.some((t) => t.name === name), `${name} must be absent`);
   }
@@ -51,7 +52,7 @@ test('configured means present: the four ALP tools appear, with honest wording',
   const { tools } = await client.listTools();
   assert.equal(
     tools.length,
-    generatedTools.length + curatedTools.length + ALP_NAMES.length
+    generatedTools.length + curatedTools.length + ALP_NAMES.length + 1
   );
   const ask = tools.find((t) => t.name === 'ask_question')!;
   assert.match(ask.description ?? '', /NO ANSWER WILL COME BACK/);

@@ -103,7 +103,8 @@ test('offline handshake: keyless server lists 57 tools; a call 401s as a tool re
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(st), client.connect(ct)]);
   const { tools } = await client.listTools();
-  assert.equal(tools.length, generatedTools.length + curatedTools.length);
+  // + 1: describe-tool is served alongside the curated overlay.
+  assert.equal(tools.length, generatedTools.length + curatedTools.length + 1);
   assert.ok(tools.length >= 57, `surface shrank to ${tools.length}`);
   const res = (await client.callTool({ name: 'list-pods', arguments: {} })) as {
     isError?: boolean;

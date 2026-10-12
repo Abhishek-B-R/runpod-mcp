@@ -54,13 +54,14 @@ export function createDescribeTool(served: () => ListableTool[]): CuratedTool {
 export function similarNames(query: string, names: string[]): string[] {
   const wanted = new Set(words(query));
   return names
-    .map((name) => ({
-      name,
-      shared: words(name).filter((word) => wanted.has(word)).length,
-    }))
-    .filter((entry) => entry.shared > 0)
-    .sort((a, b) => b.shared - a.shared || a.name.localeCompare(b.name))
-    .slice(0, 5)
+    .map((name) => {
+      const own = new Set(words(name));
+      const shared = [...own].filter((word) => wanted.has(word)).length;
+      return { name, score: shared / new Set([...own, ...wanted]).size };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    .slice(0, 8)
     .map((entry) => entry.name);
 }
 
