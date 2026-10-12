@@ -22,8 +22,10 @@ async function connect() {
 }
 
 type Schema = Record<string, unknown>;
-const payloadOf = (result: { content: unknown }) =>
-  JSON.parse((result.content as { text: string }[])[0].text);
+const payloadOf = (result: unknown) => {
+  const { content } = result as { content?: { text?: string }[] };
+  return JSON.parse(content?.[0]?.text ?? 'null');
+};
 
 test('a schemaOnDemand tool lists its call shape; describe-tool serves the definition', async () => {
   const client = await connect();
@@ -41,7 +43,7 @@ test('a schemaOnDemand tool lists its call shape; describe-tool serves the defin
   assert.equal(body.properties, undefined);
   assert.equal(schema.$defs, undefined);
   assert.match(
-    listed.description,
+    listed.description ?? '',
     new RegExp(`${DESCRIBE_TOOL_NAME} for the full argument schema`)
   );
 
