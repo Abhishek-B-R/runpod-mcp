@@ -40,8 +40,7 @@ function extractBearerToken(req: IncomingMessage): string | null {
 // its calls. Checked case-insensitively; absence means opted in (the capture
 // itself is still a no-op unless the deployment sets POSTHOG_API_KEY).
 function analyticsOptedOut(req: IncomingMessage): boolean {
-  const raw = req.headers['x-runpod-analytics'];
-  const value = (Array.isArray(raw) ? raw[0] : raw)?.trim().toLowerCase();
+  const value = header(req, 'x-runpod-analytics')?.trim().toLowerCase();
   return value === 'off' || value === '0' || value === 'false';
 }
 

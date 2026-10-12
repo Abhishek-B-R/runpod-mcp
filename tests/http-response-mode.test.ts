@@ -266,6 +266,21 @@ describe('handleMcpRequest — response mode', () => {
     assert.ok(parsed.result.serverInfo.name);
   });
 
+  it('a batch with a junk element is refused whole, not served in part', async () => {
+    // parseMcpMessages drops the element on the strength of the SDK rejecting
+    // the whole batch; this pins the SDK's half of that bargain.
+    const { req, res, written, finished } = fakeReqRes([toolsList, 'junk']);
+    await handleMcpRequest(req, res, { verifyCredential: validCredential });
+    await finished;
+    assert.equal(written.statusCode, 400);
+    const parsed = JSON.parse(written.chunks.join('')) as {
+      error?: { code: number };
+      result?: unknown;
+    };
+    assert.equal(parsed.error?.code, -32700);
+    assert.equal(parsed.result, undefined);
+  });
+
   it('tools/call stays on text/event-stream', async () => {
     // An unknown tool errors inside the server, so no outbound call is made and
     // the transport still has to deliver the error on the stream.
