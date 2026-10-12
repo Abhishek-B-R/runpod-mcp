@@ -230,3 +230,146 @@ test('unsupported parameter locations fail unless their operation is excluded', 
     );
   }
 });
+
+interface Schema {
+  description?: string;
+  properties?: Record<string, Schema>;
+  $defs?: Record<string, Schema>;
+  allOf?: Schema[];
+}
+
+const compactionSpec: SpecDocument = {
+  paths: {
+    '/v2/catalog/gpus': {
+      get: {
+        operationId: 'listGpuTypes',
+        summary: 'List GPU types',
+        parameters: [
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer' },
+            description:
+              'Page size.\n\nResponses carry `pagination.nextCursor`.',
+          },
+        ],
+      },
+    },
+    '/v2/pods': {
+      post: {
+        operationId: 'createPod',
+        summary: 'Create a pod',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreatePodRequest' },
+            },
+          },
+        },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      BaseContainerConfig: {
+        type: 'object',
+        description: 'Composition base. Compose ContainerConfig instead.',
+        properties: {
+          image: { type: 'string', description: 'Container image.' },
+        },
+      },
+      Mounts: {
+        type: 'object',
+        description:
+          'Storage mounts attached to a pod.\n\nPATCH semantics:\n- Omitting `mounts` leaves it unchanged.\n- Clearing is rejected with 400.',
+      },
+      CreatePodRequest: {
+        allOf: [
+          { $ref: '#/components/schemas/BaseContainerConfig' },
+          {
+            type: 'object',
+            properties: {
+              gpuId: {
+                type: 'string',
+                description:
+                  'GPU **type** id — the `id` field of `GET /v2/catalog/gpus`.\n\nRejected with 400 if unknown (unknown ID → 404). Responses echo it back verbatim. Omit to accept any GPU. ' +
+                  'Trailing detail '.repeat(20).trim() +
+                  '.',
+              },
+              note: {
+                type: 'string',
+                description: 'Long'.repeat(80) + '. Short.',
+              },
+              mounts: { $ref: '#/components/schemas/Mounts' },
+            },
+          },
+        ],
+      },
+    },
+  },
+};
+
+function body(tool: { inputSchema: Record<string, unknown> }): Schema {
+  return tool.inputSchema as Schema;
+}
+
+test('argument descriptions keep leading sentences and constraints, name tools instead of REST paths, drop output prose and status codes', () => {
+  const [create, list] = generateTools(compactionSpec);
+  const request = body(create).$defs!.CreatePodRequest.allOf![1].properties!;
+  assert.equal(
+    request.gpuId.description,
+    'GPU type id — the `id` field of `list-gpu-types`. Rejected if unknown (unknown ID). Omit to accept any GPU.'
+  );
+  // A first sentence past the cap survives whole; nothing is cut mid-sentence.
+  assert.equal(request.note.description, 'Long'.repeat(80) + '.');
+  assert.equal(
+    body(create).$defs!.Mounts.description,
+    'Storage mounts attached to a pod. PATCH semantics: Omitting `mounts` leaves it unchanged. Clearing is rejected.'
+  );
+  assert.equal(
+    (body(list).properties as Record<string, Schema>).limit.description,
+    'Page size.'
+  );
+});
+
+test('a definition reached only through allOf loses its composition note but keeps its field descriptions', () => {
+  const [create] = generateTools(compactionSpec);
+  const base = body(create).$defs!.BaseContainerConfig;
+  assert.equal(base.description, undefined);
+  assert.equal(base.properties!.image.description, 'Container image.');
+  assert.equal(
+    body(create).$defs!.Mounts.description?.startsWith('Storage mounts'),
+    true,
+    'a definition a property points at keeps its description'
+  );
+});
+
+test('property description overrides replace the spec text by address and reject stale addresses', () => {
+  const [create, list] = generateTools(compactionSpec, {
+    propertyDescriptions: {
+      'CreatePodRequest.gpuId': 'Catalog GPU type id.',
+      'CreatePodRequest.mounts': 'Pod storage; see Mounts.',
+      Mounts: 'One persistent or one network mount.',
+      'listGpuTypes.limit': 'Page size, default 1000.',
+    },
+  });
+  const request = body(create).$defs!.CreatePodRequest.allOf![1].properties!;
+  assert.equal(request.gpuId.description, 'Catalog GPU type id.');
+  assert.equal(request.mounts.description, 'Pod storage; see Mounts.');
+  assert.equal(
+    body(create).$defs!.Mounts.description,
+    'One persistent or one network mount.'
+  );
+  assert.equal(
+    (body(list).properties as Record<string, Schema>).limit.description,
+    'Page size, default 1000.'
+  );
+  assert.throws(
+    () =>
+      generateTools(compactionSpec, {
+        propertyDescriptions: { 'CreatePodRequest.nope': 'x', Gone: 'y' },
+      }),
+    /Property description overrides missing from spec: CreatePodRequest\.nope, Gone/
+  );
+});

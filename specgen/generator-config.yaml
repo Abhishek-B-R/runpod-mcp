@@ -121,3 +121,101 @@ descriptions:
     get-secret first; delete only secrets your own tool calls created in this
     conversation, or the one the user asked you to delete by id — a name found
     by listing is not attribution.
+
+# Schema address -> argument description served instead of the spec's. The
+# generator compacts every spec description (specgen/generator/prose.ts); list
+# a field here when that cut loses a constraint an agent needs — above all the
+# silent ones, where a call succeeds and does something other than intended.
+# Addresses are DefName, DefName.prop, operationId.param or operationId.body;
+# the generator rejects an address the spec no longer has.
+propertyDescriptions:
+  CreatePodRequest.templateId: >-
+    ID of a pod template to base this pod on (not a serverless one). Its container settings (image, args,
+    disk, ports, env, registry, persistent mount) fill in what this body
+    omits; body fields win, and `env` merges per key with body winning. A
+    CUDA field in `gpu` replaces the template's CUDA constraint; CPU pods
+    ignore its mount. Copied once: later template edits do not affect the pod.
+  CreateEndpointRequest.templateId: >-
+    ID of a serverless template to base this endpoint on (must be
+    serverless). Its container settings (image,
+    args, disk, ports, env, registry) fill in what this body omits; body
+    fields win, and `env` merges per key with body winning. Its
+    allowedCudaVersions seeds `gpu.allowedCudaVersions` when the body omits
+    it; pod-only flags are ignored. Copied once: later edits do not apply.
+  UpdatePodRequest.templateId: >-
+    ID of a pod template whose container settings (image, args, disk, ports,
+    env, registry; not mounts) are applied as if sent in this PATCH body;
+    explicit body fields win. `env` merges template and body per key (body
+    wins) and replaces the pod's existing env. Applied once; must be a
+    non-serverless template you can access.
+  UpdateEndpointRequest.templateId: >-
+    ID of a serverless template whose container settings (image, args, disk,
+    ports, env, registry) are applied as if sent in this PATCH body; explicit
+    body fields win. `env` merges template and body per key (body wins) and
+    replaces the endpoint's existing env. Applied once; must be a serverless
+    template you can access.
+  CreateClusterRequest.templateId: >-
+    ID of a pod template to provision every member pod from: it supplies the
+    container settings (image, args, disk, env, ports) and the registry
+    credential for private images — the only private-image path for clusters.
+    Mutually exclusive with the inline container fields (`image`, `args`,
+    `entrypoint`, `cmd`, `disk`, `env`, `ports`, `mounts`). Must be a
+    non-serverless template you can access.
+  CreatePodRequest.startSsh: >-
+    Create-time flag: sets up SSH access by injecting a `PUBLIC_KEY`
+    environment variable with your account's registered SSH keys
+    (`update-ssh-keys`), unless the request sets one. With no registered keys
+    it does nothing and the pod has no SSH access. Direct SSH also needs a
+    `22/tcp` entry in `ports`.
+  CreatePodRequest.startJupyter: >-
+    Create-time flag: starts JupyterLab by injecting a generated
+    `JUPYTER_PASSWORD` environment variable, unless the request sets one.
+    Expose `8888/http` in `ports` to reach it.
+  Mounts: >-
+    Storage mounts for the pod: at most one of `persistent` (size + path) or
+    `network` (volumeId + path, a single entry) may be set, and every entry
+    needs its full shape. On update, omit the field to leave the mount as it
+    is; the mount kind and a network mount's volumeId cannot change, and
+    mounts cannot be cleared.
+  TemplateMounts: >-
+    Storage mounts for containers from this template: a single `persistent`
+    mount only (`network` is rejected). On update, omitting `mounts` or
+    sending `{}` leaves the existing mount unchanged.
+  BaseContainerConfig.args: >-
+    The container's command as one raw string: a bare shell string is treated
+    as CMD and split into arguments; a JSON object
+    `{"entrypoint":[...],"cmd":[...]}` sets either or both. Send `""` to
+    clear; omit to leave unchanged.
+  BaseContainerConfig.cmd: >-
+    Container CMD in exec form: when the image defines an ENTRYPOINT, the
+    argument list passed to it. Encoded into `args`; supply both only when
+    they describe the same command. Send `[]` to clear; omit to leave
+    unchanged.
+  BaseEndpointGpuConfig.pools: >-
+    Serverless GPU pool IDs (the `pool` field of `list-gpu-types`). Workers
+    are placed on whichever listed pool has capacity; narrow to specific cards
+    with `excludedTypes`. On update, `pools` and `excludedTypes` are replaced
+    together, so sending `pools` alone clears the exclusions.
+  BaseEndpointGpuConfig.excludedTypes: >-
+    GPU type IDs to subtract from the selected pools — the `id` field of
+    `list-gpu-types`, the same identifiers pods take in `gpu.id`. Workers run
+    on every type in `pools` except these; omit to use the whole pool. A value
+    outside `pools` is rejected. On update, restate them whenever you send
+    `pools`, or they are cleared.
+  UpdateEndpointGpuConfig: >-
+    Partial GPU update — every field is optional and an omitted one is left
+    unchanged. `pools` is optional here, so a CUDA-only change does not resend
+    the pool list; `excludedTypes` needs `pools` in the same request, and
+    `pools` sent alone clears the exclusions.
+  UpdateEndpointGpuConfig.allowedCudaVersions: >-
+    Acceptable CUDA versions for worker placement, as `major.minor`. An
+    explicit `[]` clears the constraint; omitting the field leaves it
+    unchanged. A non-empty set cannot be sent with minCudaVersion, and setting
+    one does not clear the other: clear the other explicitly in the same
+    patch. Takes effect as workers are replaced.
+  UpdateEndpointGpuConfig.minCudaVersion: >-
+    Lowest acceptable CUDA version for worker placement, as `major.minor`. An
+    explicit `""` clears the floor; omitting the field leaves it unchanged.
+    Cannot be sent with a non-empty allowedCudaVersions (an explicit `[]`
+    there is fine); clear that explicitly in the same patch if the endpoint
+    carries one. Takes effect as workers are replaced.
