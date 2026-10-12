@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { loadKnowledge } from '@runpod/plugin-knowledge';
-import { createSpecgenServer } from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
+import { createSpecgenServer } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
 
 async function connect() {
   const server = createSpecgenServer(

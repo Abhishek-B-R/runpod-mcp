@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 
 import handler from '../api/index.js';
-import { handleMcpRequest } from '../src/http.js';
+import { handleMcpRequest } from '#src/http';
 
 // The hosted 401 tells an OAuth-capable client to re-authenticate via the
 // WWW-Authenticate header. Browsers hide every non-safelisted response header

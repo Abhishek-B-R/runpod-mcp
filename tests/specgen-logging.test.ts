@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSpecgenServer } from '../src/specgen/server.js';
-import type { ToolContext } from '../src/specgen/context.js';
+import { createSpecgenServer } from '#src/specgen/server';
+import type { ToolContext } from '#src/specgen/context';
 
 test('tool-call log lines never contain the key or the arguments', async (t) => {
   const API_KEY = 'rpa_SUPER_SECRET_KEY_00000000000000000000000';

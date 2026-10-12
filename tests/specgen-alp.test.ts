@@ -5,19 +5,19 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSpecgenServer, curatedTools } from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
-import { generatedTools } from '../src/specgen/generated/tools.gen.js';
-import { createAlpTools } from '../src/specgen/tools/alp.js';
-import { handleAlpSubmit, isSinkUrl } from '../src/alp/ingest.js';
+import { createSpecgenServer, curatedTools } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
+import { generatedTools } from '#src/specgen/generated/tools.gen';
+import { createAlpTools } from '#src/specgen/tools/alp';
+import { handleAlpSubmit, isSinkUrl } from '#src/alp/ingest';
 import {
   clampLimit,
   handleAlpJournalRead,
   journalSinkUrl,
-} from '../src/alp/read.js';
-import { journalReadUrl } from '../src/specgen/tools/alp.js';
-import { scrub, SCRUBBED_FIELDS, scrubSubmission } from '../src/alp/scrub.js';
-import { ALP_SEVERITIES } from '../src/alp/ingest.js';
+} from '#src/alp/read';
+import { journalReadUrl } from '#src/specgen/tools/alp';
+import { scrub, SCRUBBED_FIELDS, scrubSubmission } from '#src/alp/scrub';
+import { ALP_SEVERITIES } from '#src/alp/ingest';
 
 const ALP_WRITE_NAMES = ['report_feedback', 'save_to_journal', 'ask_question'];
 const ALP_NAMES = [...ALP_WRITE_NAMES, 'read_journal'];

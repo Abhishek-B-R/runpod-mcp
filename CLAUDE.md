@@ -30,6 +30,7 @@ The source is split by responsibility:
 - `src/http.ts` does bearer-token extraction and the per-request MCP session for the Streamable HTTP transport.
 - `src/specgen/` is the tool surface — generated from the v2 OpenAPI spec plus a curated overlay; see `specgen/DESIGN.md`. There is one surface: stdio and hosted serve the same tools and skill resources.
 - `src/server.ts` owns the server name/version constants.
+- Tests, scripts and the specgen generator import source modules through the `#src/...` alias (`package.json` `imports`, mapped to `src/*.ts`, so the specifier is bare); a relative `../src` import there is a lint error. `api/` and `convex/` keep relative imports because Vercel and Convex bundle them with their own resolvers.
 - `api/index.ts` is the Vercel adapter and hosts the OAuth authorization-server routes (`/.well-known/*`, `/register`, `/authorize`, `/token`).
 
 ### Hosted/OAuth environment variables

@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import http from 'node:http';
 
-import { verifyApiKey } from '../src/install/verify-key.js';
+import { verifyApiKey } from '#src/install/verify-key';
 import {
   claudeCandidatePaths,
   pickClaudeBinary,
@@ -25,7 +25,7 @@ import {
   upsertJsonServer,
   removeJsonServer,
   CLIENTS,
-} from '../src/install/clients.js';
+} from '#src/install/clients';
 
 // A stand-in for the user config path in state literals. Never read: these suites
 // exercise the interpretation, and the reader has its own suite.

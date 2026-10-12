@@ -2,16 +2,13 @@
 // operation names, status codes and counts, never response bodies or keys.
 import assert from 'node:assert/strict';
 import { createRunpodClient } from '@runpod/typescript-api-sdk';
-import { boundedFetch } from '../src/specgen/clients/bounded-fetch.js';
-import { createToolContext } from '../src/specgen/context.js';
-import { dispatchGeneratedTool } from '../src/specgen/dispatch.js';
-import { generatedTools } from '../src/specgen/generated/tools.gen.js';
-import { listEndpoints } from '../src/specgen/tools/list-endpoints.js';
-import { listTemplates } from '../src/specgen/tools/list-templates.js';
-import {
-  createSseReader,
-  collectLogSnapshot,
-} from '../src/specgen/clients/sse.js';
+import { boundedFetch } from '#src/specgen/clients/bounded-fetch';
+import { createToolContext } from '#src/specgen/context';
+import { dispatchGeneratedTool } from '#src/specgen/dispatch';
+import { generatedTools } from '#src/specgen/generated/tools.gen';
+import { listEndpoints } from '#src/specgen/tools/list-endpoints';
+import { listTemplates } from '#src/specgen/tools/list-templates';
+import { createSseReader, collectLogSnapshot } from '#src/specgen/clients/sse';
 
 const apiKey = process.env.RUNPOD_API_KEY;
 assert.ok(apiKey, 'Set RUNPOD_API_KEY before running live review checks');

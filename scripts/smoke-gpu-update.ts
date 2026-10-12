@@ -1,8 +1,8 @@
 // Explicitly opt in: this creates a zero-worker endpoint, tests GPU selection,
 // then deletes only that endpoint. No jobs are submitted or GPUs provisioned.
 import assert from 'node:assert/strict';
-import { createToolContext } from '../src/specgen/context.js';
-import { setEndpointGpus } from '../src/specgen/tools/endpoint-gpus.js';
+import { createToolContext } from '#src/specgen/context';
+import { setEndpointGpus } from '#src/specgen/tools/endpoint-gpus';
 
 assert.ok(
   process.argv.includes('--allow-create'),

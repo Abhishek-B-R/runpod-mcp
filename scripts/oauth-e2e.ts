@@ -17,7 +17,7 @@
 import { randomBytes } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { s256 } from '../src/oauth/pkce.js';
+import { s256 } from '#src/oauth/pkce';
 
 const MCP = process.env.MCP_SERVER_URL;
 if (!MCP) throw new Error('MCP_SERVER_URL is required');

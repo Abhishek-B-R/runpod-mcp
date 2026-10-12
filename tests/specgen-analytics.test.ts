@@ -2,10 +2,7 @@
 // honored, and the captured payload never contains the key or arguments.
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  captureToolCall,
-  analyticsCallerId,
-} from '../src/specgen/analytics.js';
+import { captureToolCall, analyticsCallerId } from '#src/specgen/analytics';
 
 const realFetch = globalThis.fetch;
 let captured: Array<{ url: string; body: string }> = [];

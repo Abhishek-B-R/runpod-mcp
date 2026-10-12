@@ -4,12 +4,9 @@ import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import { SERVER_NAME } from '../src/server.js';
-import {
-  createSpecgenServer,
-  SERVER_INSTRUCTIONS,
-} from '../src/specgen/server.js';
-import { createToolContext } from '../src/specgen/context.js';
+import { SERVER_NAME } from '#src/server';
+import { createSpecgenServer, SERVER_INSTRUCTIONS } from '#src/specgen/server';
+import { createToolContext } from '#src/specgen/context';
 
 // Full client<->server handshake over an in-memory transport, asserting on
 // what actually goes over the wire in the `initialize` response: the

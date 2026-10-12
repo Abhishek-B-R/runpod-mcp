@@ -11,7 +11,7 @@ import {
   HTTP_LONG_POLL_BUDGET_MS,
   HOSTED,
   getJobStatus,
-} from '../src/specgen/tools/jobs.js';
+} from '#src/specgen/tools/jobs';
 
 test('hosted budgets stay under the 60s gateway deadline', () => {
   // The suite does not run on Vercel, so HOSTED is false here — assert the

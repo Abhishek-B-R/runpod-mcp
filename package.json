@@ -50,6 +50,9 @@
       "require": "./dist/http.cjs"
     }
   },
+  "imports": {
+    "#src/*": "./src/*.ts"
+  },
   "dependencies": {
     "@clack/prompts": "^1.5.1",
     "@modelcontextprotocol/sdk": "^1.7.0",

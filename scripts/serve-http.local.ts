@@ -3,7 +3,7 @@
 // the request Bearer token (this process holds no credential). v2 is controlled
 // by this process's RUNPOD_REST_VERSION / RUNPOD_REST_V2_API_URL env.
 import { createServer } from 'node:http';
-import { handleMcpRequest } from '../src/http.js';
+import { handleMcpRequest } from '#src/http';
 
 const PORT = Number(process.env.PORT ?? 3399);
 

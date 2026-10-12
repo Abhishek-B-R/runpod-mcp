@@ -8,7 +8,7 @@ import {
   prefersJsonResponse,
   requestLogSampleRate,
   summarizeRpc,
-} from '../src/http.js';
+} from '#src/http';
 
 // ============== Response mode: JSON for the handshake, SSE for tool calls ==============
 // The CDN compresses application/json and never text/event-stream, so every
