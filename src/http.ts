@@ -15,6 +15,7 @@ import {
   type Env,
 } from './_shared/hosts.js';
 import { IncomingMessage, ServerResponse } from 'node:http';
+import { createHash } from 'node:crypto';
 
 /**
  * Extract the bearer token from an HTTP request's Authorization header.
@@ -279,6 +280,139 @@ function earlyCredentialCheckSkip(req: IncomingMessage): SkipReason | null {
   return null;
 }
 
+// The CDN compresses application/json but never text/event-stream, and tools/list
+// (~65 KB raw, ~13 KB gzipped) is sent on every client handshake. tools/call stays
+// on SSE: clients read an SSE body under their long stream timeout but a JSON body
+// under the short request timeout (30s in the Python SDK), and get-job-status /
+// runsync-endpoint legitimately hold a response longer than that. An unknown body
+// (not pre-parsed) keeps SSE, the SDK's default.
+export function prefersJsonResponse(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) return false;
+  const messages = Array.isArray(body) ? body : [body];
+  if (messages.length === 0) return false;
+  return messages.every(
+    (m) =>
+      typeof m === 'object' &&
+      m !== null &&
+      (m as { method?: unknown }).method !== 'tools/call'
+  );
+}
+
+const DEFAULT_REQUEST_LOG_SAMPLE_RATE = 0.1;
+
+// A line per request is more than the log pipeline needs, so it is sampled;
+// `sampleRate` rides along so counts can be scaled back up. MCP_VERBOSE_LOGS=true
+// logs every request.
+export function requestLogSampleRate(
+  env: NodeJS.ProcessEnv = process.env
+): number {
+  if (env.MCP_VERBOSE_LOGS === 'true') return 1;
+  const raw = env.MCP_REQUEST_LOG_SAMPLE_RATE;
+  if (raw === undefined || raw === '') return DEFAULT_REQUEST_LOG_SAMPLE_RATE;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_REQUEST_LOG_SAMPLE_RATE;
+  return Math.min(1, Math.max(0, parsed));
+}
+
+export interface RpcSummary {
+  rpc?: string;
+  client?: string;
+}
+
+// `initialize`, `tools/list`, `tools/call:list-pods`, or a comma-joined list for
+// a batch. `initialize` also carries the client's self-reported name/version.
+export function summarizeRpc(body: unknown): RpcSummary {
+  if (typeof body !== 'object' || body === null) return {};
+  const messages = Array.isArray(body) ? body : [body];
+  const rpcs: string[] = [];
+  let client: string | undefined;
+  for (const m of messages) {
+    if (typeof m !== 'object' || m === null) continue;
+    const { method, params } = m as {
+      method?: unknown;
+      params?: {
+        name?: unknown;
+        clientInfo?: { name?: unknown; version?: unknown };
+      };
+    };
+    if (typeof method !== 'string') {
+      rpcs.push('response');
+      continue;
+    }
+    const tool =
+      method === 'tools/call' && typeof params?.name === 'string'
+        ? `:${params.name}`
+        : '';
+    rpcs.push(`${method}${tool}`);
+    const info = params?.clientInfo;
+    if (method === 'initialize' && typeof info?.name === 'string') {
+      const version =
+        typeof info.version === 'string' ? info.version : 'unknown';
+      client = `${info.name}/${version}`;
+    }
+  }
+  return { rpc: rpcs.length > 0 ? rpcs.join(',') : undefined, client };
+}
+
+// 12 hex chars of sha256: enough to group a day's traffic by key or address
+// without logging either.
+function shortHash(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 12);
+}
+
+function clientAddress(req: IncomingMessage): string | undefined {
+  const real = req.headers['x-real-ip'];
+  if (typeof real === 'string' && real) return real;
+  const forwarded = req.headers['x-forwarded-for'];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)
+    ?.split(',')[0]
+    .trim();
+  return first || req.socket?.remoteAddress || undefined;
+}
+
+interface RequestLog {
+  note(summary: RpcSummary): void;
+}
+
+// Emits once the response is done (or the client went away) so the line carries
+// the status and duration alongside what was asked and by whom.
+function startRequestLog(
+  req: IncomingMessage,
+  res: ServerResponse,
+  bearerToken: string | null
+): RequestLog {
+  const sampleRate = requestLogSampleRate();
+  if (Math.random() >= sampleRate) return { note() {} };
+  const startedAt = Date.now();
+  let summary: RpcSummary = {};
+  const address = clientAddress(req);
+  const userAgent = req.headers['user-agent'];
+  let emitted = false;
+  const emit = (): void => {
+    if (emitted) return;
+    emitted = true;
+    console.log('mcp_request', {
+      method: req.method,
+      url: req.url,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+      rpc: summary.rpc,
+      client: summary.client,
+      ua: typeof userAgent === 'string' ? userAgent.slice(0, 160) : undefined,
+      caller: bearerToken ? shortHash(bearerToken) : undefined,
+      ip: address ? shortHash(address) : undefined,
+      sampleRate,
+    });
+  };
+  res.on('finish', emit);
+  res.on('close', emit);
+  return {
+    note(next) {
+      summary = next;
+    },
+  };
+}
+
 function logCredentialCheck(
   outcome: SkipReason | 'pass' | 'reject' | 'fail_open'
 ): void {
@@ -319,11 +453,7 @@ export async function handleMcpRequest(
   } = {}
 ): Promise<void> {
   const bearerToken = extractBearerToken(req);
-  console.log('mcp_request', {
-    method: req.method,
-    url: req.url,
-    hasBearerToken: !!bearerToken,
-  });
+  const requestLog = startRequestLog(req, res, bearerToken);
   // Stateless server: there are no server-initiated messages, so the standalone
   // GET SSE stream has nothing to carry. Per spec, answer 405 instead of letting
   // the SDK hold an idle stream open until the platform kills it.
@@ -407,6 +537,8 @@ export async function handleMcpRequest(
     }
   }
 
+  requestLog.note(summarizeRpc(body));
+
   // SPEC-GENERATED SURFACE (feat/specgen-server): the tool set generated from
   // the v2 OpenAPI spec plus its curated overlay, mounted behind this shell's
   // existing auth/transport. Per-request context from the caller's bearer
@@ -466,6 +598,7 @@ export async function handleMcpRequest(
 
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // stateless — no session persistence
+    enableJsonResponse: prefersJsonResponse(body),
   });
 
   // This per-request server/transport pair is single-use; dispose it when the
