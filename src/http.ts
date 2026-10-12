@@ -1,6 +1,7 @@
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createSpecgenServer } from './specgen/server.js';
 import { createToolContext as createSpecgenContext } from './specgen/context.js';
+import { callerId } from './specgen/ops.js';
 import { SERVER_VERSION } from './server.js';
 import { sanitizeUaToken } from './_shared/tracking.js';
 import {
@@ -15,7 +16,6 @@ import {
   type Env,
 } from './_shared/hosts.js';
 import { IncomingMessage, ServerResponse } from 'node:http';
-import { createHash } from 'node:crypto';
 
 /**
  * Extract the bearer token from an HTTP request's Authorization header.
@@ -349,12 +349,6 @@ export function summarizeRpc(body: unknown): RpcSummary {
   return { rpc: rpcs.length > 0 ? rpcs.join(',') : undefined, client };
 }
 
-// 12 hex chars of sha256: enough to group a day's traffic by key or address
-// without logging either.
-function shortHash(value: string): string {
-  return createHash('sha256').update(value).digest('hex').slice(0, 12);
-}
-
 function clientAddress(req: IncomingMessage): string | undefined {
   const real = req.headers['x-real-ip'];
   if (typeof real === 'string' && real) return real;
@@ -370,7 +364,9 @@ interface RequestLog {
 }
 
 // Emits once the response is done (or the client went away) so the line carries
-// the status and duration alongside what was asked and by whom.
+// the status and duration alongside what was asked and by whom. Key and address
+// go through callerId, the per-process salted hash tool_call lines use, so the
+// two lines join within an instance and neither id is replayable offline.
 function startRequestLog(
   req: IncomingMessage,
   res: ServerResponse,
@@ -389,13 +385,13 @@ function startRequestLog(
     console.log('mcp_request', {
       method: req.method,
       url: req.url,
-      status: res.statusCode,
+      status: res.writableFinished ? res.statusCode : undefined,
       durationMs: Date.now() - startedAt,
       rpc: summary.rpc,
       client: summary.client,
       ua: typeof userAgent === 'string' ? userAgent.slice(0, 160) : undefined,
-      caller: bearerToken ? shortHash(bearerToken) : undefined,
-      ip: address ? shortHash(address) : undefined,
+      caller: callerId(bearerToken ?? undefined),
+      ip: address ? callerId(address) : undefined,
       sampleRate,
     });
   };
@@ -487,9 +483,7 @@ export async function handleMcpRequest(
   // rotations. Absent when the check is skipped or fails open.
   let accountId: string | undefined;
   const early = earlyCredentialCheckSkip(req);
-  if (early) {
-    logCredentialCheck(early);
-  } else {
+  if (!early) {
     const read = await readJsonBody(req);
     if (read === BODY_TOO_LARGE) {
       res.writeHead(413, { 'Content-Type': 'application/json' });
@@ -497,37 +491,39 @@ export async function handleMcpRequest(
       return;
     }
     body = read;
-    if (!bodyIsCheckable(body)) {
-      // Absent, unparseable, or not an MCP message — nothing to check, and
-      // checking it anyway would reopen the credential oracle.
-      logCredentialCheck('skip_not_mcp_body');
-    } else {
-      const verify = opts.verifyCredential ?? defaultCredentialChecker.verify;
-      const verdict = await verify(bearerToken);
-      if (verdict.status === 'valid') accountId = verdict.accountId;
-      // 'unknown' is logged distinctly from 'pass': both let the request through,
-      // but one is an answer and the other a guess made because the auth backend
-      // could not be reached. Silently merging them hides an outage upstream.
-      logCredentialCheck(
-        verdict.status === 'invalid'
-          ? 'reject'
-          : verdict.status === 'valid'
-            ? 'pass'
-            : 'fail_open'
+  }
+  // Before the gate, so a rejected or skipped request still logs what it asked.
+  requestLog.note(summarizeRpc(body));
+  if (early) {
+    logCredentialCheck(early);
+  } else if (!bodyIsCheckable(body)) {
+    // Absent, unparseable, or not an MCP message — nothing to check, and
+    // checking it anyway would reopen the credential oracle.
+    logCredentialCheck('skip_not_mcp_body');
+  } else {
+    const verify = opts.verifyCredential ?? defaultCredentialChecker.verify;
+    const verdict = await verify(bearerToken);
+    if (verdict.status === 'valid') accountId = verdict.accountId;
+    // 'unknown' is logged distinctly from 'pass': both let the request through,
+    // but one is an answer and the other a guess made because the auth backend
+    // could not be reached. Silently merging them hides an outage upstream.
+    logCredentialCheck(
+      verdict.status === 'invalid'
+        ? 'reject'
+        : verdict.status === 'valid'
+          ? 'pass'
+          : 'fail_open'
+    );
+    if (verdict.status === 'invalid') {
+      writeUnauthorized(
+        req,
+        res,
+        `${verdict.reason} Re-authenticate to continue.`,
+        true
       );
-      if (verdict.status === 'invalid') {
-        writeUnauthorized(
-          req,
-          res,
-          `${verdict.reason} Re-authenticate to continue.`,
-          true
-        );
-        return;
-      }
+      return;
     }
   }
-
-  requestLog.note(summarizeRpc(body));
 
   // SPEC-GENERATED SURFACE (feat/specgen-server): the tool set generated from
   // the v2 OpenAPI spec plus its curated overlay, mounted behind this shell's

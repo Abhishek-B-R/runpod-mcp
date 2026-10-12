@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { IncomingMessage, ServerResponse } from 'node:http';
 
 import {
@@ -132,6 +133,49 @@ describe('requestLogSampleRate', () => {
 
 // ---- handleMcpRequest end to end against the real SDK transport ----
 
+interface Written {
+  statusCode?: number;
+  headers?: Record<string, string>;
+  chunks: string[];
+}
+
+// Enough of ServerResponse for the SDK transport and the request log: headers,
+// body writes, and the 'finish' event the log line waits for.
+class FakeResponse extends EventEmitter {
+  statusCode = 200;
+  writableFinished = false;
+  constructor(
+    private readonly written: Written,
+    private readonly finish: () => void
+  ) {
+    super();
+  }
+  writeHead(statusCode: number, hdrs?: Record<string, string>) {
+    this.statusCode = statusCode;
+    this.written.statusCode = statusCode;
+    this.written.headers = { ...(this.written.headers ?? {}), ...(hdrs ?? {}) };
+    return this;
+  }
+  setHeader(name: string, value: string | number | readonly string[]) {
+    this.written.headers = {
+      ...(this.written.headers ?? {}),
+      [name]: String(value),
+    };
+    return this;
+  }
+  flushHeaders() {}
+  write(chunk: string) {
+    this.written.chunks.push(String(chunk));
+    return true;
+  }
+  end(chunk?: string) {
+    if (chunk !== undefined) this.written.chunks.push(String(chunk));
+    this.writableFinished = true;
+    this.emit('finish');
+    this.finish();
+  }
+}
+
 function fakeReqRes(body: unknown) {
   const req = {
     method: 'POST',
@@ -142,41 +186,18 @@ function fakeReqRes(body: unknown) {
       accept: 'application/json, text/event-stream',
       authorization: 'Bearer rpa_x',
       'user-agent': 'probe/0',
+      'x-real-ip': '203.0.113.9',
     },
     body,
     socket: { remoteAddress: '127.0.0.1' },
   } as unknown as IncomingMessage;
 
-  const written: {
-    statusCode?: number;
-    headers?: Record<string, string>;
-    chunks: string[];
-  } = { chunks: [] };
+  const written: Written = { chunks: [] };
   let finish!: () => void;
   const finished = new Promise<void>((resolve) => {
     finish = resolve;
   });
-  const res = {
-    statusCode: 200,
-    writeHead(statusCode: number, hdrs?: Record<string, string>) {
-      written.statusCode = statusCode;
-      written.headers = hdrs ?? {};
-      return this;
-    },
-    flushHeaders() {},
-    write(chunk: string) {
-      written.chunks.push(String(chunk));
-      return true;
-    },
-    end(chunk?: string) {
-      if (chunk !== undefined) written.chunks.push(String(chunk));
-      finish();
-    },
-    on() {
-      return this;
-    },
-  } as unknown as ServerResponse;
-
+  const res = new FakeResponse(written, finish) as unknown as ServerResponse;
   return { req, res, written, finished };
 }
 
@@ -223,5 +244,81 @@ describe('handleMcpRequest — response mode', () => {
     const stream = written.chunks.join('');
     assert.match(stream, /^event: message\ndata: /m);
     assert.match(stream, /no-such-tool/);
+  });
+});
+
+// ---- the mcp_request log line ----
+
+interface RequestLogLine {
+  method?: string;
+  status?: number;
+  durationMs?: number;
+  rpc?: string;
+  client?: string;
+  ua?: string;
+  caller?: string;
+  ip?: string;
+  sampleRate?: number;
+}
+
+// Forces full sampling and captures only mcp_request lines, restoring both after.
+async function captureRequestLog(
+  run: () => Promise<void>
+): Promise<RequestLogLine[]> {
+  const previousRate = process.env.MCP_REQUEST_LOG_SAMPLE_RATE;
+  process.env.MCP_REQUEST_LOG_SAMPLE_RATE = '1';
+  const original = console.log;
+  const lines: RequestLogLine[] = [];
+  console.log = (...args: unknown[]) => {
+    if (args[0] === 'mcp_request') lines.push(args[1] as RequestLogLine);
+    else original(...args);
+  };
+  try {
+    await run();
+  } finally {
+    console.log = original;
+    if (previousRate === undefined)
+      delete process.env.MCP_REQUEST_LOG_SAMPLE_RATE;
+    else process.env.MCP_REQUEST_LOG_SAMPLE_RATE = previousRate;
+  }
+  return lines;
+}
+
+describe('mcp_request log line', () => {
+  it('carries what was asked and by whom, never the raw key or address', async () => {
+    const lines = await captureRequestLog(async () => {
+      const { req, res, finished } = fakeReqRes(toolsList);
+      await handleMcpRequest(req, res, { verifyCredential: validCredential });
+      await finished;
+    });
+    assert.equal(lines.length, 1);
+    const line = lines[0];
+    assert.equal(line.method, 'POST');
+    assert.equal(line.status, 200);
+    assert.equal(line.rpc, 'tools/list');
+    assert.equal(line.ua, 'probe/0');
+    assert.equal(line.sampleRate, 1);
+    assert.equal(typeof line.durationMs, 'number');
+    assert.match(line.caller ?? '', /^[0-9a-f]{12}$/);
+    assert.match(line.ip ?? '', /^[0-9a-f]{12}$/);
+    const serialized = JSON.stringify(line);
+    assert.doesNotMatch(serialized, /rpa_x/);
+    assert.doesNotMatch(serialized, /203\.0\.113\.9/);
+  });
+
+  it('a rejected credential still logs the attempted method', async () => {
+    const lines = await captureRequestLog(async () => {
+      const { req, res, finished } = fakeReqRes(toolsList);
+      await handleMcpRequest(req, res, {
+        verifyCredential: async () => ({
+          status: 'invalid' as const,
+          reason: 'revoked',
+        }),
+      });
+      await finished;
+    });
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0].status, 401);
+    assert.equal(lines[0].rpc, 'tools/list');
   });
 });
