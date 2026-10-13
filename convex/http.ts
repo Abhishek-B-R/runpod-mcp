@@ -103,6 +103,44 @@ http.route({
   }),
 });
 
+// 404 counter for the hosted server's loop breaker. Same secret, same
+// single-caller property; `key` is already a salted hash of the account.
+http.route({
+  path: '/ratelimit/not-found',
+  method: 'POST',
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.ALP_SINK_SECRET;
+    if (!secret || request.headers.get('x-alp-secret') !== secret) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const body = await readObjectBody(request);
+    if (!body) {
+      return new Response(JSON.stringify({ error: 'expected a JSON object' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const key = typeof body.key === 'string' ? body.key.slice(0, 200) : '';
+    if (!key) {
+      return new Response(JSON.stringify({ error: 'key required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const { blockedUntil, started } = await ctx.runMutation(
+      internal.rateLimit.recordNotFound,
+      { key }
+    );
+    return new Response(JSON.stringify({ ok: true, blockedUntil, started }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }),
+});
+
 export default http;
 
 async function readObjectBody(

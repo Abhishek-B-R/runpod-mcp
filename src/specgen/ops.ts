@@ -30,6 +30,8 @@ export interface RateLimitVerdict {
   allowed: boolean;
   /** Seconds the caller should wait; only set when denied. */
   retryAfterS?: number;
+  /** Which limiter denied, recorded as blocked_by on the usage event. */
+  reason?: string;
 }
 
 export type RateLimiter = (

@@ -34,7 +34,11 @@ import { runTool } from './tools/util.js';
 import { createDescribeTool } from './tools/describe.js';
 import { STATUS_WAIT_MAX_MS } from './tools/jobs.js';
 import { SERVER_NAME } from '../server.js';
-import { captureToolCall } from './analytics.js';
+import {
+  captureResourceCall,
+  captureToolCall,
+  recordedArgumentValues,
+} from './analytics.js';
 import { createAlpTools, type AlpToolsOptions } from './tools/alp.js';
 import {
   callerId,
@@ -111,6 +115,9 @@ export interface SpecgenServerOptions {
    *  cached credential verdict so the NEXT request re-checks and can emit the
    *  HTTP 401 that makes OAuth clients re-authenticate. */
   onUnauthorized?: () => void;
+  /** Called with every tool result's status (hosted loop breaker,
+   *  src/specgen/not-found-limiter.ts). */
+  onToolResult?: (tool: string, status: number) => void;
   /** ALP write tools (report_feedback / save_to_journal / ask_question).
    *  Enablement follows configuration: when absent, the tools do not appear
    *  in tools/list at all. See docs/agent-learning-protocol.md. */
@@ -191,6 +198,17 @@ export function createSpecgenServer(
     const guide = guideResources.find(
       (candidate) => candidate.uri === request.params.uri
     );
+    // Reads get their own usage event: a client reading runpod://guides/*
+    // directly never goes through read-guide. Lists are not recorded, since
+    // most clients send them on every session start.
+    if (opts.analytics) {
+      captureResourceCall(ctx.apiKey, {
+        method: 'resources/read',
+        uri: guide ? guide.uri : 'unknown',
+        ok: Boolean(guide),
+        ...opts.analytics,
+      });
+    }
     if (!guide) {
       throw new Error(
         `Unknown resource ${request.params.uri}. Resources are the plugin guides under ${GUIDE_URI_PREFIX}; call list-guides for the guide ids.`
@@ -217,6 +235,17 @@ export function createSpecgenServer(
         status: 429,
         durationMs: 0,
       });
+      // Still counted, so a blocked loop stays visible on the dashboard.
+      if (opts.analytics) {
+        captureToolCall(ctx.apiKey, {
+          tool: request.params.name,
+          ok: false,
+          status: 429,
+          durationMs: 0,
+          ...(verdict.reason ? { blockedBy: verdict.reason } : {}),
+          ...opts.analytics,
+        });
+      }
       return {
         content: [
           {
@@ -270,9 +299,12 @@ export function createSpecgenServer(
         ok: result.ok,
         status: result.status,
         durationMs: Date.now() - startedAt,
+        args: recordedArgumentValues(curated?.recordedArguments, args),
+        guideKind: curated?.recordedGuideKind?.(args),
         ...opts.analytics,
       });
     }
+    opts.onToolResult?.(request.params.name, result.status);
     // A 401 from the API proves a cached "valid" credential verdict wrong
     // before its TTL — let the shell drop it.
     if (!result.ok && result.status === 401) opts.onUnauthorized?.();

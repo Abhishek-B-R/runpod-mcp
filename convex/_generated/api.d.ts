@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as http from "../http.js";
+import type * as rateLimit from "../rateLimit.js";
 import type * as submissions from "../submissions.js";
 
 import type {
@@ -21,6 +22,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   http: typeof http;
+  rateLimit: typeof rateLimit;
   submissions: typeof submissions;
 }>;
 

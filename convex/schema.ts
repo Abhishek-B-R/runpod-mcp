@@ -41,4 +41,13 @@ export default defineSchema({
     .index('by_route', ['route'])
     .index('by_severity', ['severity'])
     .index('by_tool', ['tool']),
+  // Hosted-server 404 counters (src/specgen/not-found-limiter.ts). One row per
+  // hashed account + tool: a fixed window of 404s and, once the threshold is
+  // crossed, the time the server stops serving that pair.
+  notFoundCounters: defineTable({
+    key: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+    blockedUntil: v.number(),
+  }).index('by_key', ['key']),
 });
