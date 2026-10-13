@@ -26,9 +26,24 @@ async function main(apiKey: string): Promise<void> {
   await server.connect(new StdioServerTransport());
 }
 
-if (isWizardMode) {
+if (subcommand === '--version' || subcommand === '-v') {
+  console.log(SERVER_VERSION);
+} else if (subcommand === '--help' || subcommand === '-h') {
+  console.log(
+    [
+      `@runpod/mcp-server ${SERVER_VERSION}`,
+      '',
+      'Usage:',
+      '  RUNPOD_API_KEY=<key> npx @runpod/mcp-server@latest   run the MCP server over stdio',
+      '  npx @runpod/mcp-server@latest add [--client <ids>]   configure your agents (see add --help)',
+      '  npx @runpod/mcp-server@latest remove --client <ids>  remove Runpod from your agents',
+    ].join('\n')
+  );
+} else if (isWizardMode) {
   import('./install/wizard.js')
-    .then(({ runWizard }) => runWizard(subcommand))
+    .then(async ({ runWizard }) => {
+      process.exitCode = await runWizard(subcommand);
+    })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);

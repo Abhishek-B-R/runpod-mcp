@@ -101,6 +101,12 @@ function hostedServerConfig(
  *   Windsurf       'unverified' — not installed here, so its parser was never read.
  *                  It is a VS Code fork like Cursor, so it is probably lenient, but
  *                  "probably" is not a fact to put in a success message.
+ *   opencode       'jsonc'. Run, not inferred: opencode 1.19.0 `mcp list` loaded an
+ *                  opencode.json holding a `//` comment and trailing commas and listed
+ *                  its servers. Its docs also state JSON and JSONC are both accepted.
+ *   Pi             'json'. Run, not inferred: Pi 1.2.0 `mcp list` on an mcp.json with
+ *                  one `//` comment reported "Expected property name or '}' in JSON"
+ *                  and loaded nothing.
  */
 export type ConfigDialect = 'json' | 'jsonc' | 'unverified';
 
@@ -377,6 +383,9 @@ function jsonClient(opts: {
   hostedStrategy?: 'http' | 'mcp-remote';
   configPath: () => string;
   detectPaths?: () => string[];
+  // The entry to write, for a client whose server schema is not the common
+  // `command`/`args`/`env` or `url` shape (opencode).
+  serverValue?: (mode: AddMode) => unknown;
 }): McpClient {
   const serverProperty = opts.serverProperty ?? 'mcpServers';
   const hostedStrategy = opts.hostedStrategy ?? 'http';
@@ -388,8 +397,9 @@ function jsonClient(opts: {
         (opts.detectPaths?.() ?? [path.dirname(opts.configPath())]).some(exists)
       ),
     add: (mode) => {
-      const value =
-        mode.kind === 'local'
+      const value = opts.serverValue
+        ? opts.serverValue(mode)
+        : mode.kind === 'local'
           ? localServerConfig(mode.apiKey, serverProperty)
           : hostedServerConfig(hostedStrategy, serverProperty, mode.url);
       return Promise.resolve(
@@ -1377,6 +1387,51 @@ export function vsCodeConfigPath(): string {
   );
 }
 
+function xdgConfigHome(): string {
+  return absoluteEnvDir(process.env.XDG_CONFIG_HOME, () =>
+    path.join(home, '.config')
+  );
+}
+
+// opencode's global config: ~/.config/opencode/opencode.json (the path its
+// docs give), honouring XDG_CONFIG_HOME. It loads opencode.jsonc too, so an
+// existing .jsonc is the file to edit; otherwise write opencode.json.
+export function opencodeConfigPath(): string {
+  const dir = path.join(xdgConfigHome(), 'opencode');
+  const jsoncPath = path.join(dir, 'opencode.jsonc');
+  return exists(jsoncPath) ? jsoncPath : path.join(dir, 'opencode.json');
+}
+
+// opencode's MCP entries live under `mcp` with their own schema: `type`
+// remote/local, `command` as one array, `environment` instead of `env`. A
+// remote entry needs no auth block: opencode runs the OAuth sign-in itself.
+function opencodeServerValue(mode: AddMode) {
+  return mode.kind === 'local'
+    ? {
+        type: 'local',
+        command: ['npx', '-y', NPM_PACKAGE],
+        environment: { RUNPOD_API_KEY: mode.apiKey },
+        enabled: true,
+      }
+    : { type: 'remote', url: mode.url, enabled: true };
+}
+
+// Pi's global MCP config: <agent dir>/mcp.json, where the agent dir is
+// PI_CODING_AGENT_DIR (a leading ~ expanded, as Pi's getAgentDir does) or
+// ~/.pi/agent. A relative value is returned as-is so upsertJsonServer refuses
+// it instead of writing a key into the current directory.
+export function piMcpConfigPath(): string {
+  const configured = process.env.PI_CODING_AGENT_DIR?.trim();
+  if (!configured) return path.join(home, '.pi', 'agent', 'mcp.json');
+  const expanded =
+    configured === '~'
+      ? home
+      : configured.startsWith('~/')
+        ? path.join(home, configured.slice(2))
+        : configured;
+  return path.join(expanded, 'mcp.json');
+}
+
 export const CLIENTS: McpClient[] = [
   claudeCodeClient,
   jsonClient({
@@ -1420,5 +1475,24 @@ export const CLIENTS: McpClient[] = [
     dialect: 'jsonc',
     configPath: vsCodeConfigPath,
     detectPaths: () => [path.dirname(vsCodeConfigPath())],
+  }),
+  jsonClient({
+    id: 'opencode',
+    name: 'opencode',
+    serverProperty: 'mcp',
+    // Loaded a commented, trailing-comma config when run; see ConfigDialect.
+    dialect: 'jsonc',
+    configPath: opencodeConfigPath,
+    detectPaths: () => [path.dirname(opencodeConfigPath())],
+    serverValue: opencodeServerValue,
+  }),
+  jsonClient({
+    id: 'pi',
+    name: 'Pi',
+    // Rejected a single comment when run; see ConfigDialect.
+    dialect: 'json',
+    // Native Streamable HTTP (`pi mcp add --url` writes exactly `{ url }`).
+    configPath: piMcpConfigPath,
+    detectPaths: () => [path.dirname(piMcpConfigPath())],
   }),
 ];
