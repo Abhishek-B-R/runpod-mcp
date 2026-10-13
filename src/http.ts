@@ -8,7 +8,7 @@ import {
 import { createSpecgenServer } from './specgen/server.js';
 import { createToolContext as createSpecgenContext } from './specgen/context.js';
 import { callerId } from './specgen/ops.js';
-import { analyticsCallerId } from './specgen/analytics.js';
+import { analyticsCallerId, captureLoopBlocked } from './specgen/analytics.js';
 import {
   createNotFoundLimiter,
   notFoundSinkUrl,
@@ -521,6 +521,20 @@ export async function handleMcpRequest(
           key: analyticsCallerId(bearerToken, accountId),
           sinkUrl: notFoundUrl,
           secret: process.env.ALP_SINK_SECRET,
+          // One usage event per block, unless this client opted out.
+          onBlockStarted: analyticsOptedOut(req)
+            ? undefined
+            : (tool, blockedUntil) =>
+                captureLoopBlocked(bearerToken, {
+                  tool,
+                  blockedForS: Math.round((blockedUntil - Date.now()) / 1000),
+                  transport: 'http',
+                  serverVersion: opts.serverVersion ?? SERVER_VERSION,
+                  clientName: sanitizeUaToken(
+                    String(req.headers['user-agent'] ?? 'unknown')
+                  ),
+                  accountId,
+                }),
         })
       : null;
 

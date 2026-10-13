@@ -242,6 +242,7 @@ export function createSpecgenServer(
           ok: false,
           status: 429,
           durationMs: 0,
+          ...(verdict.reason ? { blockedBy: verdict.reason } : {}),
           ...opts.analytics,
         });
       }

@@ -6,8 +6,8 @@
 // `X-Runpod-Analytics: off` header (see README), and the stdio transport
 // never captures at all.
 //
-// SECURITY: the event payload is the closed set of fields in ToolCallEvent and
-// ResourceEvent — never the API key, the Authorization header, resource ids,
+// SECURITY: the event payload is the closed set of fields in ToolCallEvent,
+// ResourceEvent and LoopBlockedEvent — never the API key, the Authorization header, resource ids,
 // or response payloads. Tool arguments are dropped unless the tool names them
 // in CuratedTool.recordedArguments; only the bundled guide and concept tools
 // do, and their arguments are guide ids, concept names and search words. The caller identity is an HMAC of the key with a
@@ -36,6 +36,18 @@ export interface ToolCallEvent {
   args?: Record<string, string>;
   /** Kind of the guide read-guide resolved: skill, reference or golden-path. */
   guideKind?: string;
+  /** Set when this server's own limiter denied the call (not an API 429). */
+  blockedBy?: string;
+}
+
+/** The hosted 404 loop breaker started blocking one account + tool. */
+export interface LoopBlockedEvent {
+  tool: string;
+  blockedForS: number;
+  transport: 'stdio' | 'http';
+  serverVersion: string;
+  clientName?: string;
+  accountId?: string;
 }
 
 /** A resources/read request. `uri` is the served guide URI, or 'unknown'
@@ -156,8 +168,26 @@ export function captureToolCall(
     server_version: event.serverVersion,
     ...(event.clientName ? { client_name: event.clientName } : {}),
     ...(event.guideKind ? { guide_kind: event.guideKind } : {}),
+    ...(event.blockedBy ? { blocked_by: event.blockedBy } : {}),
     ...args,
   });
+}
+
+export function captureLoopBlocked(
+  apiKey: string | undefined,
+  event: LoopBlockedEvent
+): void {
+  capture(
+    'runpod_mcp_loop_blocked',
+    analyticsCallerId(apiKey, event.accountId),
+    {
+      tool: event.tool,
+      blocked_for_s: event.blockedForS,
+      transport: event.transport,
+      server_version: event.serverVersion,
+      ...(event.clientName ? { client_name: event.clientName } : {}),
+    }
+  );
 }
 
 export function captureResourceCall(

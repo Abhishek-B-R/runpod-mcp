@@ -12,6 +12,9 @@ import type { RateLimiter } from './ops.js';
 
 const SINK_TIMEOUT_MS = 3_000;
 
+/** The `reason` on this limiter's denials, recorded as blocked_by. */
+export const NOT_FOUND_LOOP = 'not_found_loop';
+
 // blockedUntil (epoch ms) per `${key}|${tool}`, shared by every request this
 // warm instance serves. Only blocked pairs are stored, and expired ones are
 // dropped on the next check.
@@ -37,6 +40,8 @@ export function createNotFoundLimiter(opts: {
   secret: string;
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /** Called once per block, when the sink reports that this 404 started it. */
+  onBlockStarted?: (tool: string, blockedUntil: number) => void;
 }): NotFoundLimiter {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const now = opts.now ?? Date.now;
@@ -49,7 +54,11 @@ export function createNotFoundLimiter(opts: {
         blocked.delete(pair);
         return { allowed: true };
       }
-      return { allowed: false, retryAfterS: Math.ceil((until - now()) / 1000) };
+      return {
+        allowed: false,
+        retryAfterS: Math.ceil((until - now()) / 1000),
+        reason: NOT_FOUND_LOOP,
+      };
     },
     onToolResult: (tool, status) => {
       if (status !== 404) return;
@@ -65,10 +74,14 @@ export function createNotFoundLimiter(opts: {
       })
         .then((response) => (response.ok ? response.json() : null))
         .then((body: unknown) => {
-          const until = (body as { blockedUntil?: unknown } | null)
-            ?.blockedUntil;
+          const reply = body as {
+            blockedUntil?: unknown;
+            started?: unknown;
+          } | null;
+          const until = reply?.blockedUntil;
           if (typeof until === 'number' && until > now()) {
             blocked.set(pair, until);
+            if (reply?.started === true) opts.onBlockStarted?.(tool, until);
           }
         })
         .catch(() => {

@@ -38,6 +38,11 @@ export const recordNotFound = internalMutation({
     const next = nextNotFoundState(row, Date.now());
     if (row) await ctx.db.patch(row._id, next);
     else await ctx.db.insert('notFoundCounters', { key, ...next });
-    return next.blockedUntil;
+    // `started` is true for exactly one report per block, so the server can
+    // emit one usage event per block however many instances report.
+    return {
+      blockedUntil: next.blockedUntil,
+      started: next.count === NOT_FOUND_THRESHOLD,
+    };
   },
 });

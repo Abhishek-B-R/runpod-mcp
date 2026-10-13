@@ -130,11 +130,11 @@ http.route({
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const blockedUntil = await ctx.runMutation(
+    const { blockedUntil, started } = await ctx.runMutation(
       internal.rateLimit.recordNotFound,
       { key }
     );
-    return new Response(JSON.stringify({ ok: true, blockedUntil }), {
+    return new Response(JSON.stringify({ ok: true, blockedUntil, started }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

@@ -47,7 +47,11 @@ test('the sink URL is derived from the ALP submit URL', () => {
   assert.equal(notFoundSinkUrl('https://evil.example/alp/submit'), null);
 });
 
-function limiter(reply: () => Promise<Response>, now = () => 1_000) {
+function limiter(
+  reply: () => Promise<Response>,
+  now = () => 1_000,
+  onBlockStarted?: (tool: string, blockedUntil: number) => void
+) {
   const calls: Array<{ url: string; body: string; secret: string | null }> = [];
   const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
     calls.push({
@@ -65,6 +69,7 @@ function limiter(reply: () => Promise<Response>, now = () => 1_000) {
       secret: 's3cret',
       fetchImpl,
       now,
+      onBlockStarted,
     }),
   };
 }
@@ -93,6 +98,7 @@ test('a block from the sink denies that tool only, until it expires', async () =
   assert.deepEqual(await l.rateLimiter('x', 'get-pod'), {
     allowed: false,
     retryAfterS: 60,
+    reason: 'not_found_loop',
   });
   assert.deepEqual(await l.rateLimiter('x', 'list-pods'), { allowed: true });
   clock = 61_000;
@@ -112,4 +118,22 @@ test('a failing or unreachable sink fails open', async () => {
   assert.deepEqual(await throws.rateLimiter('x', 'get-pod'), {
     allowed: true,
   });
+});
+
+test('onBlockStarted fires only when the sink says this 404 started the block', async () => {
+  const started: Array<[string, number]> = [];
+  let replyStarted = true;
+  const l = limiter(
+    async () => Response.json({ blockedUntil: 61_000, started: replyStarted }),
+    () => 1_000,
+    (tool, until) => started.push([tool, until])
+  );
+  l.onToolResult('get-pod', 404);
+  await flush();
+  await flush();
+  replyStarted = false;
+  l.onToolResult('get-pod', 404);
+  await flush();
+  await flush();
+  assert.deepEqual(started, [['get-pod', 61_000]]);
 });

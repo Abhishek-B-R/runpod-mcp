@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import {
+  captureLoopBlocked,
   captureResourceCall,
   captureToolCall,
   analyticsCallerId,
@@ -265,4 +266,52 @@ test('a rate-limited call is still captured, as a 429', async () => {
   assert.equal(event.properties.tool, 'get-pod');
   assert.equal(event.properties.status, 429);
   assert.equal(event.properties.ok, false);
+  // A generic denial carries no reason, so it is not labeled as the breaker.
+  assert.equal(event.properties.blocked_by, undefined);
+});
+
+test('a loop-breaker denial is labeled blocked_by', async () => {
+  process.env.POSTHOG_API_KEY = 'phc_test';
+  const server = createSpecgenServer(
+    createToolContext({ apiKey: 'rpa_test' }),
+    'test',
+    {
+      analytics: { transport: 'http', serverVersion: 'test' },
+      rateLimiter: async () => ({
+        allowed: false,
+        retryAfterS: 60,
+        reason: 'not_found_loop',
+      }),
+    }
+  );
+  const client = new Client({ name: 'test', version: '1' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(st), client.connect(ct)]);
+  await client.callTool({ name: 'get-pod', arguments: { id: 'pod_123' } });
+  assert.equal(events()[0].properties.blocked_by, 'not_found_loop');
+});
+
+test('the loop-blocked event carries the tool and block length, never the key', () => {
+  process.env.POSTHOG_API_KEY = 'phc_test';
+  captureLoopBlocked('rpa_SECRETKEY', {
+    tool: 'get-pod',
+    blockedForS: 3600,
+    transport: 'http',
+    serverVersion: '4.0.0',
+    clientName: 'Python-urllib_3.12',
+    accountId: 'user_123',
+  });
+  assert.ok(!captured[0].body.includes('rpa_SECRETKEY'));
+  assert.ok(!captured[0].body.includes('user_123'));
+  const [event] = events();
+  assert.equal(event.event, 'runpod_mcp_loop_blocked');
+  assert.deepEqual(Object.keys(event.properties).sort(), [
+    '$process_person_profile',
+    'blocked_for_s',
+    'client_name',
+    'server_version',
+    'surface_version',
+    'tool',
+    'transport',
+  ]);
 });
