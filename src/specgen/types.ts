@@ -22,4 +22,8 @@ export interface CuratedTool {
    *  return an error result (the ALP write tools): an unknown key there is
    *  ignored by the handler rather than rejected, by design. */
   lenientArguments?: boolean;
+  /** Argument names whose values go into the anonymous usage event
+   *  (src/specgen/analytics.ts). Everything else is dropped. List only
+   *  arguments that never carry secrets, resource ids or user content. */
+  recordedArguments?: readonly string[];
 }

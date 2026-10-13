@@ -6,9 +6,11 @@
 // `X-Runpod-Analytics: off` header (see README), and the stdio transport
 // never captures at all.
 //
-// SECURITY: the event payload is the closed set of fields in ToolCallEvent —
-// never the API key, the Authorization header, tool arguments, resource ids,
-// or response payloads. The caller identity is an HMAC of the key with a
+// SECURITY: the event payload is the closed set of fields in ToolCallEvent and
+// ResourceEvent — never the API key, the Authorization header, resource ids,
+// or response payloads. Tool arguments are dropped unless the tool names them
+// in CuratedTool.recordedArguments; only the bundled guide and concept tools
+// do, and their arguments are guide ids, concept names and search words. The caller identity is an HMAC of the key with a
 // server-side salt (MCP_ANALYTICS_SALT): stable across instances so per-user
 // frequency works in PostHog, irreversible without the salt, and never
 // joinable to the key itself. $process_person_profile stays false — no
@@ -28,6 +30,20 @@ export interface ToolCallEvent {
   /** Stable account id (the pre-flight's myself.id). Preferred identity:
    *  keys rotate on every OAuth sign-in, the account does not. Hashed like
    *  the key — the raw id never leaves the process. */
+  accountId?: string;
+  /** Argument values the tool allowlists (CuratedTool.recordedArguments),
+   *  already passed through recordedArgumentValues. Sent as arg_<name>. */
+  args?: Record<string, string>;
+}
+
+/** A resources/* request. `uri` is set for resources/read only. */
+export interface ResourceEvent {
+  method: 'resources/list' | 'resources/templates/list' | 'resources/read';
+  uri?: string;
+  ok: boolean;
+  transport: 'stdio' | 'http';
+  serverVersion: string;
+  clientName?: string;
   accountId?: string;
 }
 
@@ -64,11 +80,37 @@ export function analyticsCallerId(
   );
 }
 
-// Fire-and-forget: never throws, never blocks the tool response. A lost
-// event is fine; a failed tool call because of analytics is not.
-export function captureToolCall(
-  apiKey: string | undefined,
-  event: ToolCallEvent
+// Longest recorded argument or URI. Guide ids and concept names are far
+// shorter; the cap bounds what a client can push into an event.
+const MAX_RECORDED_VALUE_LENGTH = 200;
+
+function bounded(value: string): string {
+  return value.slice(0, MAX_RECORDED_VALUE_LENGTH);
+}
+
+// Picks the allowlisted argument values off a tool call. Only strings and
+// numbers are kept, so an object-shaped argument can never be serialized in.
+export function recordedArgumentValues(
+  names: readonly string[] | undefined,
+  args: Record<string, unknown>
+): Record<string, string> | undefined {
+  if (!names?.length) return undefined;
+  const values: Record<string, string> = {};
+  for (const name of names) {
+    const value = args[name];
+    if (typeof value === 'string' || typeof value === 'number') {
+      values[name] = bounded(String(value).trim());
+    }
+  }
+  return Object.keys(values).length ? values : undefined;
+}
+
+// Fire-and-forget: never throws, never blocks the response. A lost event is
+// fine; a failed tool call because of analytics is not.
+function capture(
+  event: string,
+  distinctId: string,
+  properties: Record<string, unknown>
 ): void {
   const posthogKey = process.env.POSTHOG_API_KEY;
   if (!posthogKey) return;
@@ -77,18 +119,12 @@ export function captureToolCall(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       api_key: posthogKey,
-      event: 'runpod_mcp_tool_call',
-      distinct_id: analyticsCallerId(apiKey, event.accountId),
+      event,
+      distinct_id: distinctId,
       timestamp: new Date().toISOString(),
       properties: {
-        tool: event.tool,
-        ok: event.ok,
-        status: event.status,
-        duration_ms: event.durationMs,
-        transport: event.transport,
-        server_version: event.serverVersion,
+        ...properties,
         surface_version: SURFACE_VERSION,
-        ...(event.clientName ? { client_name: event.clientName } : {}),
         $process_person_profile: false,
       },
     }),
@@ -96,4 +132,44 @@ export function captureToolCall(
   }).catch(() => {
     // Dropped events are acceptable; noisy logs on every blip are not.
   });
+}
+
+export function captureToolCall(
+  apiKey: string | undefined,
+  event: ToolCallEvent
+): void {
+  const args = Object.fromEntries(
+    Object.entries(event.args ?? {}).map(([name, value]) => [
+      `arg_${name}`,
+      value,
+    ])
+  );
+  capture('runpod_mcp_tool_call', analyticsCallerId(apiKey, event.accountId), {
+    tool: event.tool,
+    ok: event.ok,
+    status: event.status,
+    duration_ms: event.durationMs,
+    transport: event.transport,
+    server_version: event.serverVersion,
+    ...(event.clientName ? { client_name: event.clientName } : {}),
+    ...args,
+  });
+}
+
+export function captureResourceCall(
+  apiKey: string | undefined,
+  event: ResourceEvent
+): void {
+  capture(
+    'runpod_mcp_resource_call',
+    analyticsCallerId(apiKey, event.accountId),
+    {
+      method: event.method,
+      ...(event.uri !== undefined ? { uri: bounded(event.uri) } : {}),
+      ok: event.ok,
+      transport: event.transport,
+      server_version: event.serverVersion,
+      ...(event.clientName ? { client_name: event.clientName } : {}),
+    }
+  );
 }

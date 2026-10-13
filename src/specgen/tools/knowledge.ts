@@ -181,6 +181,7 @@ const source = {
 export const listGuides: CuratedTool = {
   name: 'list-guides',
   annotations: bundledRead,
+  recordedArguments: ['kind', 'query', 'concept'],
   description:
     'List the official Runpod guides: skills (how to work with each tool), reference docs (how Runpod works), and golden paths (live-verified end-to-end walkthroughs such as a dev pod, a Whisper endpoint or a fine-tune-to-serverless pipeline). Read one with read-guide. For a golden path, mcp says whether an agent with only these MCP tools can finish it: full (follow it with tool calls), partial (use it for the plan and facts; name the step the user must run in a terminal), none (reference only). Skills and reference docs have mcp null. concepts lists the concept ids it works with (see lookup-concept). Filter with kind, query or concept.',
   inputSchema: {
@@ -224,6 +225,7 @@ export const listGuides: CuratedTool = {
 export const readGuide: CuratedTool = {
   name: 'read-guide',
   annotations: bundledRead,
+  recordedArguments: ['id'],
   description:
     'Read one official Runpod guide in full, by the id list-guides returns (for example "runpod-usage/storage" or "golden-path/06-dev-pod").',
   inputSchema: {
@@ -267,6 +269,7 @@ export const readGuide: CuratedTool = {
 export const lookupConcept: CuratedTool = {
   name: 'lookup-concept',
   annotations: bundledRead,
+  recordedArguments: ['concept'],
   description:
     'Look up one Runpod concept (pod, network volume, machine, worker, template, …) by id, name or alias; case, plurals and small typos are tolerated, and `matched_as` shows the key used when the match was not exact. Returns its summary, fields, states, relations and rules, each rule with the public source it comes from, the concepts that point at it, and the linked guides: examples (golden paths that use it, with their mcp level) and docs (skills and reference docs that explain it). Use it for exact facts, for example "is a volume disk tied to one machine" or "what happens to a stopped pod\'s GPU".',
   inputSchema: {
@@ -337,6 +340,7 @@ export const lookupConcept: CuratedTool = {
 export const searchConcepts: CuratedTool = {
   name: 'search-concepts',
   annotations: bundledRead,
+  recordedArguments: ['query', 'limit'],
   description:
     'Search the rules of the Runpod concept graph by words, for example "restart stopped pod no gpu" or "network volume data center". Returns the best-matching rules with their concept and public evidence. Follow up with lookup-concept for the full concept.',
   inputSchema: {

@@ -75,7 +75,7 @@ An OAuth-capable client starts the "Sign in with Runpod" flow automatically on f
 
 ### Usage analytics
 
-The hosted server records one anonymous event per tool call (tool name, status, duration, transport — never your API key, arguments, or any resource data; your identity is an irreversible salted hash). To opt out, send the header `X-Runpod-Analytics: off` — e.g. append `--header "X-Runpod-Analytics: off"` to the `claude mcp add` command. Running locally, nothing is ever sent.
+The hosted server records one anonymous event per tool call (tool name, status, duration, transport) and per guide resource request (method and guide URI). It never records your API key or any resource data, and drops tool arguments except on the guide and concept tools (`list-guides`, `read-guide`, `lookup-concept`, `search-concepts`), where it keeps the guide id, concept name or search words. Your identity is an irreversible salted hash. To opt out, send the header `X-Runpod-Analytics: off` — e.g. append `--header "X-Runpod-Analytics: off"` to the `claude mcp add` command. Running locally, nothing is ever sent.
 
 ## Run locally with `npx`
 
