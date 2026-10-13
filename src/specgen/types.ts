@@ -24,6 +24,12 @@ export interface CuratedTool {
   lenientArguments?: boolean;
   /** Argument names whose values go into the anonymous usage event
    *  (src/specgen/analytics.ts). Everything else is dropped. List only
-   *  arguments that never carry secrets, resource ids or user content. */
+   *  arguments that never carry secrets or resource ids. The one accepted
+   *  exception to "no user content" is the free-text `query` of list-guides
+   *  and search-concepts: agent-written search words, kept for search
+   *  analytics and bounded to 200 characters. */
   recordedArguments?: readonly string[];
+  /** Resolves the kind of guide a call reads (skill, reference or
+   *  golden-path), recorded as guide_kind. Undefined when nothing matched. */
+  recordedGuideKind?: (args: Record<string, unknown>) => string | undefined;
 }

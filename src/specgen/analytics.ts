@@ -34,12 +34,15 @@ export interface ToolCallEvent {
   /** Argument values the tool allowlists (CuratedTool.recordedArguments),
    *  already passed through recordedArgumentValues. Sent as arg_<name>. */
   args?: Record<string, string>;
+  /** Kind of the guide read-guide resolved: skill, reference or golden-path. */
+  guideKind?: string;
 }
 
-/** A resources/* request. `uri` is set for resources/read only. */
+/** A resources/read request. `uri` is the served guide URI, or 'unknown'
+ *  on a miss so arbitrary client strings never land in events. */
 export interface ResourceEvent {
-  method: 'resources/list' | 'resources/templates/list' | 'resources/read';
-  uri?: string;
+  method: 'resources/read';
+  uri: string;
   ok: boolean;
   transport: 'stdio' | 'http';
   serverVersion: string;
@@ -152,6 +155,7 @@ export function captureToolCall(
     transport: event.transport,
     server_version: event.serverVersion,
     ...(event.clientName ? { client_name: event.clientName } : {}),
+    ...(event.guideKind ? { guide_kind: event.guideKind } : {}),
     ...args,
   });
 }
@@ -165,7 +169,7 @@ export function captureResourceCall(
     analyticsCallerId(apiKey, event.accountId),
     {
       method: event.method,
-      ...(event.uri !== undefined ? { uri: bounded(event.uri) } : {}),
+      uri: bounded(event.uri),
       ok: event.ok,
       transport: event.transport,
       server_version: event.serverVersion,

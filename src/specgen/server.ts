@@ -38,7 +38,6 @@ import {
   captureResourceCall,
   captureToolCall,
   recordedArgumentValues,
-  type ResourceEvent,
 } from './analytics.js';
 import { createAlpTools, type AlpToolsOptions } from './tools/alp.js';
 import {
@@ -183,41 +182,30 @@ export function createSpecgenServer(
     tools: [...servedCuratedTools, ...generatedTools].map(listTool),
   }));
 
-  // Resource requests get their own usage event: a client reading
-  // runpod://guides/* directly never goes through read-guide.
-  const recordResource = (
-    method: ResourceEvent['method'],
-    ok: boolean,
-    uri?: string
-  ) => {
-    if (opts.analytics) {
-      captureResourceCall(ctx.apiKey, {
-        method,
-        ok,
-        ...(uri !== undefined ? { uri } : {}),
-        ...opts.analytics,
-      });
-    }
-  };
-
-  server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    recordResource('resources/list', true);
-    return {
-      resources: guideResources.map(({ text: _text, ...resource }) => resource),
-    };
-  });
+  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    resources: guideResources.map(({ text: _text, ...resource }) => resource),
+  }));
 
   // Some clients probe templates unconditionally; answer empty instead of -32601.
-  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
-    recordResource('resources/templates/list', true);
-    return { resourceTemplates: [] };
-  });
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+    resourceTemplates: [],
+  }));
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const guide = guideResources.find(
       (candidate) => candidate.uri === request.params.uri
     );
-    recordResource('resources/read', Boolean(guide), request.params.uri);
+    // Reads get their own usage event: a client reading runpod://guides/*
+    // directly never goes through read-guide. Lists are not recorded, since
+    // most clients send them on every session start.
+    if (opts.analytics) {
+      captureResourceCall(ctx.apiKey, {
+        method: 'resources/read',
+        uri: guide ? guide.uri : 'unknown',
+        ok: Boolean(guide),
+        ...opts.analytics,
+      });
+    }
     if (!guide) {
       throw new Error(
         `Unknown resource ${request.params.uri}. Resources are the plugin guides under ${GUIDE_URI_PREFIX}; call list-guides for the guide ids.`
@@ -298,6 +286,7 @@ export function createSpecgenServer(
         status: result.status,
         durationMs: Date.now() - startedAt,
         args: recordedArgumentValues(curated?.recordedArguments, args),
+        guideKind: curated?.recordedGuideKind?.(args),
         ...opts.analytics,
       });
     }

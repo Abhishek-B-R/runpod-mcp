@@ -193,6 +193,8 @@ test('the server records guide and concept arguments on hosted tool calls', asyn
   const [readGuide, search] = events();
   assert.equal(readGuide.properties.tool, 'read-guide');
   assert.equal(readGuide.properties.arg_id, 'runpod-mcp');
+  assert.equal(readGuide.properties.guide_kind, 'skill');
+  assert.equal(search.properties.guide_kind, undefined);
   assert.equal(search.properties.arg_query, 'network volume');
   assert.equal(search.properties.arg_limit, '3');
 });
@@ -207,20 +209,30 @@ test('tools without recordedArguments still send no argument fields', async () =
   assert.ok(!Object.keys(event.properties).some((k) => k.startsWith('arg_')));
 });
 
-test('the server records resource lists and reads, including misses', async () => {
+test('the server records resource reads only, with misses as unknown', async () => {
   process.env.POSTHOG_API_KEY = 'phc_test';
   const client = await connect(true);
   await client.listResources();
   await client.readResource({ uri: 'runpod://guides/runpod-mcp' });
-  await assert.rejects(client.readResource({ uri: 'runpod://guides/nope' }));
+  await assert.rejects(
+    client.readResource({ uri: 'runpod://guides/not-a-guide?x=hello' })
+  );
   assert.deepEqual(
     events().map(({ properties: p }) => [p.method, p.uri, p.ok]),
     [
-      ['resources/list', undefined, true],
       ['resources/read', 'runpod://guides/runpod-mcp', true],
-      ['resources/read', 'runpod://guides/nope', false],
+      ['resources/read', 'unknown', false],
     ]
   );
+});
+
+test('an unknown read-guide id records no guide_kind', async () => {
+  process.env.POSTHOG_API_KEY = 'phc_test';
+  const client = await connect(true);
+  await client.callTool({ name: 'read-guide', arguments: { id: 'nope' } });
+  const [event] = events();
+  assert.equal(event.properties.arg_id, 'nope');
+  assert.equal(event.properties.guide_kind, undefined);
 });
 
 test('without the analytics option (stdio) resource requests send nothing', async () => {

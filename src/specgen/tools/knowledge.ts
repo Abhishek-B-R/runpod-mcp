@@ -226,6 +226,8 @@ export const readGuide: CuratedTool = {
   name: 'read-guide',
   annotations: bundledRead,
   recordedArguments: ['id'],
+  recordedGuideKind: (args) =>
+    knowledge.guides.find((guide) => guide.id === String(args.id).trim())?.kind,
   description:
     'Read one official Runpod guide in full, by the id list-guides returns (for example "runpod-usage/storage" or "golden-path/06-dev-pod").',
   inputSchema: {
