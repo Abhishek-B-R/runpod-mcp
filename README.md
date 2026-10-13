@@ -4,6 +4,10 @@ The official Runpod Model Context Protocol (MCP) server. It lets MCP clients suc
 
 **We host it for you at [`https://mcp.getrunpod.io/`](https://mcp.getrunpod.io/)** — point your client at that URL and sign in with Runpod. Nothing to install, no API key on disk. Or run it locally from npm as [`@runpod/mcp-server`](https://www.npmjs.com/package/@runpod/mcp-server).
 
+<!-- runpod-agent-setup:start -->
+**Using an AI agent?** Point it to https://docs.runpod.io/agent-setup.md to install the Runpod skills and MCP server.
+<!-- runpod-agent-setup:end -->
+
 ## Quick start
 
 The guided installer detects the clients you have installed, asks which to configure, and writes the config for you:
