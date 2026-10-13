@@ -5,7 +5,7 @@ import { internalMutation } from './_generated/server';
 // loop on deleted resources, not an agent: block that tool for BLOCK_MS.
 export const NOT_FOUND_WINDOW_MS = 10 * 60_000;
 export const NOT_FOUND_THRESHOLD = 50;
-export const NOT_FOUND_BLOCK_MS = 10 * 60_000;
+export const NOT_FOUND_BLOCK_MS = 60 * 60_000;
 
 export interface NotFoundState {
   windowStart: number;
