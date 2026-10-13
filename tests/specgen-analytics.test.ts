@@ -242,3 +242,27 @@ test('without the analytics option (stdio) resource requests send nothing', asyn
   await client.readResource({ uri: 'runpod://guides/runpod-mcp' });
   assert.equal(captured.length, 0);
 });
+
+test('a rate-limited call is still captured, as a 429', async () => {
+  process.env.POSTHOG_API_KEY = 'phc_test';
+  const server = createSpecgenServer(
+    createToolContext({ apiKey: 'rpa_test' }),
+    'test',
+    {
+      analytics: { transport: 'http', serverVersion: 'test' },
+      rateLimiter: async () => ({ allowed: false, retryAfterS: 30 }),
+    }
+  );
+  const client = new Client({ name: 'test', version: '1' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await Promise.all([server.connect(st), client.connect(ct)]);
+  const result = await client.callTool({
+    name: 'get-pod',
+    arguments: { id: 'pod_123' },
+  });
+  assert.equal(result.isError, true);
+  const [event] = events();
+  assert.equal(event.properties.tool, 'get-pod');
+  assert.equal(event.properties.status, 429);
+  assert.equal(event.properties.ok, false);
+});

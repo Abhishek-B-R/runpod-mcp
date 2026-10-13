@@ -8,6 +8,11 @@ import {
 import { createSpecgenServer } from './specgen/server.js';
 import { createToolContext as createSpecgenContext } from './specgen/context.js';
 import { callerId } from './specgen/ops.js';
+import { analyticsCallerId } from './specgen/analytics.js';
+import {
+  createNotFoundLimiter,
+  notFoundSinkUrl,
+} from './specgen/not-found-limiter.js';
 import { SERVER_VERSION } from './server.js';
 import { sanitizeUaToken } from './_shared/tracking.js';
 import {
@@ -505,6 +510,20 @@ export async function handleMcpRequest(
     }
   }
 
+  // Loop breaker for scripts polling deleted resources: hosted only, signed-in
+  // callers only, and only where the Convex sink is configured.
+  const notFoundUrl = process.env.ALP_SINK_URL
+    ? notFoundSinkUrl(process.env.ALP_SINK_URL)
+    : null;
+  const notFoundLimiter =
+    bearerToken && notFoundUrl && process.env.ALP_SINK_SECRET
+      ? createNotFoundLimiter({
+          key: analyticsCallerId(bearerToken, accountId),
+          sinkUrl: notFoundUrl,
+          secret: process.env.ALP_SINK_SECRET,
+        })
+      : null;
+
   // SPEC-GENERATED SURFACE (feat/specgen-server): the tool set generated from
   // the v2 OpenAPI spec plus its curated overlay, mounted behind this shell's
   // existing auth/transport. Per-request context from the caller's bearer
@@ -551,6 +570,12 @@ export async function handleMcpRequest(
               ),
               harnessSource: 'user_agent' as const,
             },
+          }
+        : {}),
+      ...(notFoundLimiter
+        ? {
+            rateLimiter: notFoundLimiter.rateLimiter,
+            onToolResult: notFoundLimiter.onToolResult,
           }
         : {}),
       // A tool call that 401s proves a cached "valid" verdict wrong before

@@ -115,6 +115,9 @@ export interface SpecgenServerOptions {
    *  cached credential verdict so the NEXT request re-checks and can emit the
    *  HTTP 401 that makes OAuth clients re-authenticate. */
   onUnauthorized?: () => void;
+  /** Called with every tool result's status (hosted loop breaker,
+   *  src/specgen/not-found-limiter.ts). */
+  onToolResult?: (tool: string, status: number) => void;
   /** ALP write tools (report_feedback / save_to_journal / ask_question).
    *  Enablement follows configuration: when absent, the tools do not appear
    *  in tools/list at all. See docs/agent-learning-protocol.md. */
@@ -232,6 +235,16 @@ export function createSpecgenServer(
         status: 429,
         durationMs: 0,
       });
+      // Still counted, so a blocked loop stays visible on the dashboard.
+      if (opts.analytics) {
+        captureToolCall(ctx.apiKey, {
+          tool: request.params.name,
+          ok: false,
+          status: 429,
+          durationMs: 0,
+          ...opts.analytics,
+        });
+      }
       return {
         content: [
           {
@@ -290,6 +303,7 @@ export function createSpecgenServer(
         ...opts.analytics,
       });
     }
+    opts.onToolResult?.(request.params.name, result.status);
     // A 401 from the API proves a cached "valid" credential verdict wrong
     // before its TTL — let the shell drop it.
     if (!result.ok && result.status === 401) opts.onUnauthorized?.();

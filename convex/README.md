@@ -41,3 +41,7 @@ CONVEX_DEPLOY_KEY=<key> npx convex env set ALP_SINK_SECRET <same value as Vercel
 The write mutation imports the shared redactor from `src/alp/scrub.ts` and
 reapplies it before insertion. Deploy both Convex environments when that shared
 module or the mutation changes; a Vercel deploy alone does not update the sink.
+
+The same deployment also holds the hosted server's 404 counters
+(`notFoundCounters`, `convex/rateLimit.ts`, route `/ratelimit/not-found`). The
+server fails open until that route is deployed, so deploy order does not matter.
