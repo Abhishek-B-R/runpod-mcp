@@ -5,6 +5,7 @@ import {
   JSONRPCMessageSchema,
   type JSONRPCMessage,
 } from '@modelcontextprotocol/sdk/types.js';
+import { hasAnswered } from './alp/answered.js';
 import { createSpecgenServer } from './specgen/server.js';
 import { createToolContext as createSpecgenContext } from './specgen/context.js';
 import { callerId } from './specgen/ops.js';
@@ -286,6 +287,12 @@ function earlyCredentialCheckSkip(req: IncomingMessage): SkipReason | null {
 const isToolCall = (message: JSONRPCMessage): boolean =>
   CallToolRequestSchema.safeParse(message).success;
 
+// The instructions are delivered on `initialize` and nowhere else, so that is
+// the one request where it matters whether the account has already answered
+// the once-per-account referral ask.
+const isInitialize = (message: JSONRPCMessage): boolean =>
+  InitializeRequestSchema.safeParse(message).success;
+
 // The CDN compresses application/json but never text/event-stream, and tools/list
 // (~65 KB raw, ~13 KB gzipped) is sent on every client handshake. tools/call stays
 // on SSE: clients read an SSE body under their long stream timeout but a JSON body
@@ -538,6 +545,27 @@ export async function handleMcpRequest(
         })
       : null;
 
+  // The referral ask (docs/agent-learning-protocol.md, "RT4") rides in the
+  // initialize instructions and is meant to reach an account once, so on
+  // initialize — and only with a resolved account to key on — ask the sink
+  // whether this account has answered. Fail-soft toward asking: an unknown
+  // verdict keeps the prompt, and the sink's write-time dedupe is the
+  // backstop. tools/list is not consulted, so the tool stays advertised; its
+  // description and already_submitted reply cover a direct call.
+  const alpConfigured = Boolean(
+    process.env.ALP_SINK_URL && process.env.ALP_SINK_SECRET
+  );
+  let promptReferral = true;
+  if (alpConfigured && accountId && messages.some(isInitialize)) {
+    // The production lookup never rejects; the catch makes the fail-soft
+    // contract structural for the test seam too: a rejection is "unknown".
+    const answered = await (opts.hasAnswered ?? hasAnswered)(
+      accountId,
+      'referral'
+    ).catch(() => null);
+    promptReferral = answered !== true;
+  }
+
   // SPEC-GENERATED SURFACE (feat/specgen-server): the tool set generated from
   // the v2 OpenAPI spec plus its curated overlay, mounted behind this shell's
   // existing auth/transport. Per-request context from the caller's bearer
@@ -574,7 +602,7 @@ export async function handleMcpRequest(
       // store submissions (the sink is configured). The ingest endpoint is
       // this deployment's own /api/alp/submit — one write path, both
       // transports (docs/agent-learning-protocol.md).
-      ...(process.env.ALP_SINK_URL && process.env.ALP_SINK_SECRET
+      ...(alpConfigured
         ? {
             alp: {
               ingestUrl: `${getBaseUrl(req)}/api/alp/submit`,
@@ -584,6 +612,7 @@ export async function handleMcpRequest(
               ),
               harnessSource: 'user_agent' as const,
             },
+            promptReferral,
           }
         : {}),
       ...(notFoundLimiter
