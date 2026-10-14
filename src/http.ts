@@ -33,7 +33,7 @@ import { IncomingMessage, ServerResponse } from 'node:http';
  * Extract the bearer token from an HTTP request's Authorization header.
  * Returns null if the header is missing or malformed.
  */
-function extractBearerToken(req: IncomingMessage): string | null {
+export function extractBearerToken(req: IncomingMessage): string | null {
   const authHeader = req.headers.authorization;
   if (!authHeader) return null;
   const parts = authHeader.split(' ');

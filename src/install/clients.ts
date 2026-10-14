@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync, spawnSync } from 'child_process';
 import * as jsonc from 'jsonc-parser';
+import { hostedMcpBase } from '../_shared/hosts.js';
 
 // The npm package and the name the server is registered under in client config.
 export const SERVER_NAME = 'runpod';
@@ -11,8 +12,7 @@ export const NPM_PACKAGE = '@runpod/mcp-server@latest';
 // The hosted Streamable HTTP endpoint. Clients point here and authenticate with
 // the OAuth "Sign in with Runpod" flow — no API key is stored in their config.
 // Overridable so a non-production deployment can be targeted during testing.
-export const HOSTED_URL =
-  process.env.RUNPOD_MCP_URL ?? 'https://mcp.getrunpod.io/';
+export const HOSTED_URL = `${hostedMcpBase(process.env)}/`;
 
 // How the user wants the server wired up:
 // - local: run via npx on this machine, authenticated by an API key in the env.

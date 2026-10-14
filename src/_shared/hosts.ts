@@ -29,3 +29,12 @@ export function publicGraphqlBase(env: Env): string {
 export function authedGraphqlBase(env: Env): string {
   return pick(env.RUNPOD_AUTHED_GRAPHQL_URL, 'https://api.runpod.io/graphql');
 }
+/** The hosted MCP server: install target, and stdio's search-docs backend. */
+export function hostedMcpBase(env: Env): string {
+  return pick(env.RUNPOD_MCP_URL, 'https://mcp.getrunpod.io');
+}
+/** The runpod-assistant Convex site serving /v1/search. No default: unset
+ *  means search is not configured. */
+export function knowledgeSearchBase(env: Env): string | undefined {
+  return pick(env.KNOWLEDGE_SEARCH_URL, '') || undefined;
+}

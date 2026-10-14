@@ -16,6 +16,8 @@
 // failure is returned at once. The whole call fits a deadline well under the
 // hosted function's 60s maxDuration.
 
+import { knowledgeSearchBase, type Env } from '../_shared/hosts.js';
+
 export const SEARCH_NAMESPACES = ['docs', 'knowledge', 'blog', 'site'] as const;
 /** /v1/search caps a query at 2000 characters and a page at 4 x 5 results. */
 export const MAX_QUERY_CHARS = 2000;
@@ -28,7 +30,7 @@ export interface SearchRequest {
 }
 
 /** The fields of the /v1/search response this server passes on. */
-export interface SearchResponse {
+interface SearchResponse {
   text: string;
   totalResults: number;
   failedNamespaces: string[];
@@ -40,11 +42,15 @@ export interface SearchOutcome {
   body: SearchResponse | { error: string; hint?: string };
 }
 
-export type SearchFn = (request: SearchRequest) => Promise<SearchOutcome>;
+/** Backs search-docs. apiKey is the caller's Runpod key (stdio forwards it). */
+export type SearchFn = (
+  request: SearchRequest,
+  apiKey: string | undefined
+) => Promise<SearchOutcome>;
 
 export interface SearchKnowledgeOptions {
   /** Test seams. Production uses process.env, global fetch, and real timers. */
-  env?: Record<string, string | undefined>;
+  env?: Env;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -66,11 +72,17 @@ const AT_CAPACITY: SearchOutcome = {
   },
 };
 
+const UNREACHABLE: SearchOutcome = {
+  status: 504,
+  body: {
+    error: 'Runpod knowledge search did not respond.',
+    hint: 'Retry the same call once.',
+  },
+};
+
 /** Configured when this deployment can reach /v1/search with the service key. */
-export function searchConfigured(
-  env: Record<string, string | undefined> = process.env
-): boolean {
-  return Boolean(env.KNOWLEDGE_SEARCH_URL && env.RUNPOD_ASSISTANT_API_KEY);
+export function searchConfigured(env: Env = process.env): boolean {
+  return Boolean(knowledgeSearchBase(env) && env.RUNPOD_ASSISTANT_API_KEY);
 }
 
 /** Validate tool or route input. Returns the request or a client-facing error. */
@@ -125,27 +137,28 @@ export async function searchKnowledge(
     opts.sleep ??
     ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const now = opts.now ?? Date.now;
-  const siteUrl = env.KNOWLEDGE_SEARCH_URL;
-  const apiKey = env.RUNPOD_ASSISTANT_API_KEY;
-  if (!siteUrl || !apiKey) {
+  if (!searchConfigured(env)) {
     return {
       status: 503,
       body: { error: 'Knowledge search is not configured on this server.' },
     };
   }
-
-  const url = `${siteUrl.replace(/\/+$/, '')}/v1/search`;
+  const url = `${knowledgeSearchBase(env)}/v1/search`;
+  // Built once: every attempt sends the same request.
+  const init = {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.RUNPOD_ASSISTANT_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ...request, source: 'runpod-mcp' }),
+  };
   const startedAt = now();
   for (let attempt = 1; ; attempt++) {
     let retryable: boolean;
     try {
       const res = await doFetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ...request, source: 'runpod-mcp' }),
+        ...init,
         signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
       });
       if (res.ok) {
@@ -176,13 +189,7 @@ export async function searchKnowledge(
       console.warn(
         `knowledge_search_unreachable ${error instanceof Error ? error.name : 'error'}`
       );
-      return {
-        status: 504,
-        body: {
-          error: 'Runpod knowledge search did not respond.',
-          hint: 'Retry the same call once.',
-        },
-      };
+      return UNREACHABLE;
     }
     const delay = Math.random() * BASE_DELAY_MS * 2 ** (attempt - 1);
     if (attempt >= ATTEMPTS || now() - startedAt + delay > RETRY_DEADLINE_MS) {
@@ -200,4 +207,37 @@ function errorField(text: string): string {
     // Not JSON: fall through to the generic message.
   }
   return 'Invalid search request.';
+}
+
+const HOSTED_CLIENT_TIMEOUT_MS = 55_000;
+
+/** stdio: search through the hosted server's POST /api/search (route.ts). */
+export function hostedSearch(
+  searchUrl: string,
+  doFetch: typeof fetch = fetch
+): SearchFn {
+  return async (request, apiKey) => {
+    try {
+      const res = await doFetch(searchUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(HOSTED_CLIENT_TIMEOUT_MS),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | SearchOutcome['body']
+        | null;
+      return body
+        ? { status: res.status, body }
+        : {
+            status: 502,
+            body: { error: `Runpod knowledge search returned ${res.status}.` },
+          };
+    } catch {
+      return UNREACHABLE;
+    }
+  };
 }

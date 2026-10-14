@@ -6,8 +6,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createSpecgenServer } from '#src/specgen/server';
 import { createToolContext } from '#src/specgen/context';
-import { hostedSearch } from '#src/specgen/tools/search';
 import {
+  hostedSearch,
   searchKnowledge,
   type SearchFn,
   type SearchOutcome,
@@ -57,8 +57,10 @@ test('search-docs is absent without a search function', async () => {
 
 test('search-docs is listed and passes the validated request through', async () => {
   const seen: unknown[] = [];
-  const client = await connect(async (request) => {
+  const keys: unknown[] = [];
+  const client = await connect(async (request, apiKey) => {
     seen.push(request);
+    keys.push(apiKey);
     return {
       status: 200,
       body: { text: 'hit', totalResults: 1, failedNamespaces: [] },
@@ -77,6 +79,7 @@ test('search-docs is listed and passes the validated request through', async () 
   assert.deepEqual(seen, [
     { query: 'network volume', namespaces: ['docs'], limit: 3 },
   ]);
+  assert.deepEqual(keys, ['rpa_test'], 'the caller key comes from the context');
 
   const bad = await client.callTool({
     name: 'search-docs',
@@ -244,7 +247,10 @@ async function route(
   let upstreamCalls = 0;
   await handleSearch({ headers, body } as never, res as never, {
     env: ENV,
-    verify: async () => ({ status: verdict }),
+    verify: async () =>
+      verdict === 'invalid'
+        ? { status: 'invalid', reason: 'revoked' }
+        : { status: verdict },
     fetch: async () => {
       upstreamCalls++;
       return upstream();
@@ -283,20 +289,18 @@ test('hostedSearch forwards the caller key and passes the status through', async
   let auth: string | undefined;
   const search = hostedSearch(
     'https://mcp.example/api/search',
-    'rpa_user',
     async (_url, init) => {
       auth = (init?.headers as Record<string, string>).Authorization;
       return respond(503, { error: 'at capacity', hint: 'Retry' });
     }
   );
-  const outcome: SearchOutcome = await search({ query: 'q' });
+  const outcome: SearchOutcome = await search({ query: 'q' }, 'rpa_user');
   assert.equal(auth, 'Bearer rpa_user');
   assert.equal(outcome.status, 503);
 
   const html = hostedSearch(
     'https://mcp.example/api/search',
-    'rpa_user',
     async () => new Response('<html>404</html>', { status: 404 })
   );
-  assert.equal((await html({ query: 'q' })).status, 502);
+  assert.equal((await html({ query: 'q' }, 'rpa_user')).status, 502);
 });

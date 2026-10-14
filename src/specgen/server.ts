@@ -140,11 +140,14 @@ export function createSpecgenServer(
   // and ALP write tools, and describe-tool over all of it. Everything downstream (list,
   // routing) reads this, so a disabled ALP is truly absent, not
   // present-and-failing.
-  const configuredCuratedTools = [
-    ...curatedTools,
-    ...(opts.search ? [createSearchDocsTool(opts.search)] : []),
-    ...(opts.alp ? createAlpTools(opts.alp) : []),
-  ];
+  const configuredCuratedTools =
+    opts.search || opts.alp
+      ? [
+          ...curatedTools,
+          ...(opts.search ? [createSearchDocsTool(opts.search)] : []),
+          ...(opts.alp ? createAlpTools(opts.alp) : []),
+        ]
+      : curatedTools;
   const servedCuratedTools: CuratedTool[] = [
     ...configuredCuratedTools,
     createDescribeTool(() => [...servedCuratedTools, ...generatedTools]),
