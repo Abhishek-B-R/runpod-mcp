@@ -155,7 +155,6 @@ export async function searchKnowledge(
   };
   const startedAt = now();
   for (let attempt = 1; ; attempt++) {
-    let retryable: boolean;
     try {
       const res = await doFetch(url, {
         ...init,
@@ -175,7 +174,7 @@ export async function searchKnowledge(
         };
       }
       const text = await res.text();
-      retryable =
+      const retryable =
         res.status === 503 || res.status === 429 || PLATFORM_LIMIT.test(text);
       if (!retryable) {
         // 400 is the caller's input; anything else is ours to fix, and the

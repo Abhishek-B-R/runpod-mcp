@@ -4,8 +4,9 @@
 //
 // The tool takes its search function from the transport: the hosted server
 // searches in-process with its service key (searchKnowledge); stdio calls the
-// hosted POST /api/search with the caller's own key (hostedSearch). Registered only when a search
-// function is configured, so a deployment without one does not list it.
+// hosted POST /api/search with the caller's own key (hostedSearch). Registered
+// only when a search function is configured, so a deployment without one does
+// not list it.
 
 import {
   MAX_QUERY_CHARS,

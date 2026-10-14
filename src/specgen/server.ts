@@ -137,9 +137,9 @@ export function createSpecgenServer(
   const rateLimiter = opts.rateLimiter ?? noopRateLimiter;
   const caller = callerId(ctx.apiKey);
   // The served curated set: the static surface, the config-gated search-docs
-  // and ALP write tools, and describe-tool over all of it. Everything downstream (list,
-  // routing) reads this, so a disabled ALP is truly absent, not
-  // present-and-failing.
+  // and ALP write tools, and describe-tool over all of it. Everything
+  // downstream (list, routing) reads this, so a disabled tool is truly absent,
+  // not present-and-failing.
   const configuredCuratedTools =
     opts.search || opts.alp
       ? [
