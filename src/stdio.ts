@@ -2,6 +2,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { SERVER_VERSION } from './server.js';
 import { createSpecgenServer } from './specgen/server.js';
 import { createToolContext } from './specgen/context.js';
+import { hostedSearch } from './specgen/tools/search.js';
+
+// search-docs goes through the hosted server, which holds the knowledge
+// index's service key (src/search/knowledge.ts).
+const SEARCH_URL = new URL(
+  '/api/search',
+  process.env.RUNPOD_MCP_URL ?? 'https://mcp.getrunpod.io/'
+).toString();
 
 // Detect the install wizard subcommand (`add` / `remove`). In this mode we run
 // the interactive installer instead of starting the stdio server, and the API
@@ -21,7 +29,8 @@ async function main(apiKey: string): Promise<void> {
       apiKey,
       tracking: { transport: 'stdio', serverVersion: SERVER_VERSION },
     }),
-    SERVER_VERSION
+    SERVER_VERSION,
+    { search: hostedSearch(SEARCH_URL, apiKey) }
   );
   await server.connect(new StdioServerTransport());
 }

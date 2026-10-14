@@ -15,6 +15,8 @@ The server is v2-only (the v1 REST API and `RUNPOD_REST_VERSION` are retired). A
 
 ALP (Agent Learning Protocol) write tools — `report_feedback` / `save_to_journal` / `ask_question` — are **hosted-only**: they appear only when the deployment configures its storage sink (`ALP_SINK_URL` + `ALP_SINK_SECRET`), and never on local stdio. See `docs/agent-learning-protocol.md`.
 
+`search-docs` searches the Runpod docs, curated support knowledge, blog and site through the runpod-assistant knowledge index. The hosted server lists it when it holds the index's service key (`KNOWLEDGE_SEARCH_URL` + `RUNPOD_ASSISTANT_API_KEY`) and searches in-process. Local stdio calls the hosted `POST /api/search` with your own API key, so the npm package never holds the service key. Capacity rejections from the index (503, 429) are retried server-side with jittered backoff.
+
 To develop against a non-production API, pair the runtime override with the matching spec: `SPEC_URL=... pnpm spec:pull && pnpm generate:tools` (see `specgen/README.md`).
 
 ## Serverless endpoint types and autoscaling

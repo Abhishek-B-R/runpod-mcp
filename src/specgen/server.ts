@@ -40,6 +40,8 @@ import {
   recordedArgumentValues,
 } from './analytics.js';
 import { createAlpTools, type AlpToolsOptions } from './tools/alp.js';
+import { createSearchDocsTool } from './tools/search.js';
+import type { SearchFn } from '../search/knowledge.js';
 import {
   callerId,
   logToolCall,
@@ -122,6 +124,9 @@ export interface SpecgenServerOptions {
    *  Enablement follows configuration: when absent, the tools do not appear
    *  in tools/list at all. See docs/agent-learning-protocol.md. */
   alp?: AlpToolsOptions;
+  /** Backs search-docs (src/specgen/tools/search.ts). When absent, the tool
+   *  is not listed. */
+  search?: SearchFn;
 }
 
 export function createSpecgenServer(
@@ -131,13 +136,15 @@ export function createSpecgenServer(
 ): Server {
   const rateLimiter = opts.rateLimiter ?? noopRateLimiter;
   const caller = callerId(ctx.apiKey);
-  // The served curated set: the static surface, the config-gated ALP write
-  // tools, and describe-tool over all of it. Everything downstream (list,
+  // The served curated set: the static surface, the config-gated search-docs
+  // and ALP write tools, and describe-tool over all of it. Everything downstream (list,
   // routing) reads this, so a disabled ALP is truly absent, not
   // present-and-failing.
-  const configuredCuratedTools = opts.alp
-    ? [...curatedTools, ...createAlpTools(opts.alp)]
-    : curatedTools;
+  const configuredCuratedTools = [
+    ...curatedTools,
+    ...(opts.search ? [createSearchDocsTool(opts.search)] : []),
+    ...(opts.alp ? createAlpTools(opts.alp) : []),
+  ];
   const servedCuratedTools: CuratedTool[] = [
     ...configuredCuratedTools,
     createDescribeTool(() => [...servedCuratedTools, ...generatedTools]),

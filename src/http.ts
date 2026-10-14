@@ -14,6 +14,7 @@ import {
   notFoundSinkUrl,
 } from './specgen/not-found-limiter.js';
 import { SERVER_VERSION } from './server.js';
+import { searchConfigured, searchKnowledge } from './search/knowledge.js';
 import { sanitizeUaToken } from './_shared/tracking.js';
 import {
   createCredentialChecker,
@@ -585,6 +586,11 @@ export async function handleMcpRequest(
               harnessSource: 'user_agent' as const,
             },
           }
+        : {}),
+      // search-docs: listed only where the deployment holds the assistant's
+      // service key; the search runs in-process with it.
+      ...(searchConfigured()
+        ? { search: (request) => searchKnowledge(request) }
         : {}),
       ...(notFoundLimiter
         ? {
