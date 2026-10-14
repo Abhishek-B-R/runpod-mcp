@@ -1,6 +1,6 @@
 # Runpod MCP server
 
-The official Runpod Model Context Protocol (MCP) server. It lets MCP clients such as Claude Code, Claude Desktop, Cursor, Windsurf, and VS Code manage your Runpod Pods, Serverless endpoints, templates, network volumes, and more.
+The official Runpod Model Context Protocol (MCP) server. It lets MCP clients such as Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, opencode, and Pi manage your Runpod Pods, Serverless endpoints, templates, network volumes, and more.
 
 **We host it for you at [`https://mcp.getrunpod.io/`](https://mcp.getrunpod.io/)** — point your client at that URL and sign in with Runpod. Nothing to install, no API key on disk. Or run it locally from npm as [`@runpod/mcp-server`](https://www.npmjs.com/package/@runpod/mcp-server).
 
@@ -22,6 +22,17 @@ To undo later:
 ```bash
 npx @runpod/mcp-server@latest remove
 ```
+
+To skip the prompts (from a script, CI, or a coding agent's shell), name the clients. Supported ids are `claude-code`, `cursor`, `windsurf`, `claude-desktop`, `vscode`, `opencode`, and `pi`:
+
+```bash
+npx @runpod/mcp-server@latest add --client opencode,pi          # hosted, sign in with Runpod
+npx @runpod/mcp-server@latest add --client cursor --local       # local, key read from RUNPOD_API_KEY
+npx @runpod/mcp-server@latest remove --client opencode
+npx @runpod/mcp-server@latest add --list                        # what's detected, and where each config lives
+```
+
+Without `--client` and without a terminal, the installer exits with code 2 and configures nothing. With flags it exits 0 when every client was configured and 1 when one failed.
 
 ### Or install the whole Runpod plugin
 

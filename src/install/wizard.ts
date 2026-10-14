@@ -7,6 +7,7 @@ import {
   type McpClient,
 } from './clients.js';
 import { verifyApiKey } from './verify-key.js';
+import { parseWizardArgs, wizardUsage } from './args.js';
 
 const API_KEYS_URL = 'https://www.runpod.io/console/user/settings';
 
@@ -200,13 +201,132 @@ async function runRemove(): Promise<void> {
   p.outro('Done.');
 }
 
-// Entry point for `npx @runpod/mcp-server <add|remove>`.
-export async function runWizard(subcommand: string): Promise<void> {
-  p.intro('Runpod MCP server installer');
+// How each client finishes the hosted OAuth sign-in, for the result lines.
+const SIGN_IN: Record<string, string> = {
+  'claude-code': 'in Claude Code run /mcp → runpod → Sign in with Runpod',
+  opencode: 'run `opencode mcp auth runpod`',
+  pi: 'run `pi mcp login runpod`',
+};
 
+function signInStep(client: McpClient): string {
+  return (
+    SIGN_IN[client.id] ??
+    'restart it; it opens "Sign in with Runpod" when it connects'
+  );
+}
+
+// The flag-driven path: no prompts, plain output, and an exit code that says
+// what happened, so an agent or a script can rely on it.
+async function runNonInteractive(
+  subcommand: string,
+  clientIds: string[],
+  requestedMode: 'hosted' | 'local' | undefined
+): Promise<number> {
+  const clients = clientIds.map((id) => CLIENTS.find((c) => c.id === id)!);
+
+  if (subcommand === 'remove') {
+    let failed = 0;
+    for (const client of clients) {
+      const result = await client.remove();
+      if (!result.success) failed++;
+      console.log(
+        `${result.success ? '✓' : '✗'} ${client.name}${result.message ? ` — ${result.message}` : ''}`
+      );
+    }
+    return failed ? 1 : 0;
+  }
+
+  let mode: AddMode = { kind: 'hosted', url: HOSTED_URL };
+  if (requestedMode === 'local') {
+    const apiKey = process.env.RUNPOD_API_KEY?.trim();
+    if (!apiKey) {
+      console.error(
+        '--local reads the API key from RUNPOD_API_KEY, which is not set. Export it, or use --hosted to sign in with Runpod instead.'
+      );
+      return 2;
+    }
+    const valid = await verifyApiKey(apiKey);
+    if (valid === false) {
+      console.error(
+        'RUNPOD_API_KEY was rejected by Runpod. Nothing was configured.'
+      );
+      return 1;
+    }
+    if (valid === null)
+      console.error('Could not verify RUNPOD_API_KEY (offline?). Continuing.');
+    mode = { kind: 'local', apiKey };
+  }
+
+  let failed = 0;
+  for (const client of clients) {
+    const result = await client.add(mode);
+    if (result.success) {
+      console.log(
+        `✓ ${client.name} — ${result.message ? `${result.message}; ` : ''}${client.describeTarget()}`
+      );
+    } else {
+      failed++;
+      console.log(`✗ ${client.name} — ${result.message ?? 'unknown error'}`);
+    }
+  }
+  for (const client of clients) {
+    console.log(
+      mode.kind === 'hosted'
+        ? `Next for ${client.name}: ${signInStep(client)}.`
+        : `Next for ${client.name}: restart it (or reconnect MCP) to load the Runpod tools.`
+    );
+  }
+  return failed ? 1 : 0;
+}
+
+async function listClients(): Promise<void> {
+  const detected = await detectAll();
+  for (const client of CLIENTS) {
+    console.log(
+      `${client.id.padEnd(15)} ${detected.get(client.id) ? 'detected    ' : 'not detected'}  ${client.describeTarget()}`
+    );
+  }
+}
+
+// Entry point for `npx @runpod/mcp-server <add|remove> [flags]`. Resolves to
+// the process exit code.
+export async function runWizard(
+  subcommand: string,
+  argv: readonly string[] = process.argv.slice(3),
+  isInteractive: boolean = Boolean(process.stdin.isTTY && process.stdout.isTTY)
+): Promise<number> {
+  const ids = CLIENTS.map((c) => c.id);
+  const args = parseWizardArgs(argv, ids);
+  if (args.errors.length) {
+    for (const error of args.errors) console.error(`error: ${error}`);
+    console.error(`\n${wizardUsage(ids)}`);
+    return 2;
+  }
+  if (args.help) {
+    console.log(wizardUsage(ids));
+    return 0;
+  }
+  if (args.list) {
+    await listClients();
+    return 0;
+  }
+  if (args.clients) {
+    return runNonInteractive(subcommand, args.clients, args.mode);
+  }
+  if (!isInteractive) {
+    // Exiting 0 here is what let an agent report "configured" for a run that
+    // wrote nothing. Say what happened and how to do it without prompts.
+    console.error(
+      `This installer needs an interactive terminal to show its prompts, and none is attached. Nothing was configured.\nTo run it without prompts, name the clients: npx @runpod/mcp-server@latest ${subcommand} --client <ids>\n\n${wizardUsage(ids)}`
+    );
+    return 2;
+  }
+
+  p.intro('Runpod MCP server installer');
   if (subcommand === 'remove') {
     await runRemove();
   } else {
     await runAdd();
   }
+  return 0;
 }
