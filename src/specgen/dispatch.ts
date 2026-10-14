@@ -89,10 +89,24 @@ export async function dispatchGeneratedTool(
   const rejected = validateArguments(tool.inputSchema, args);
   if (rejected) return rejected;
 
+  const required = new Set((tool.inputSchema.required ?? []) as string[]);
   const pathParams: Record<string, unknown> = {};
   const query: Record<string, unknown> = {};
   for (const param of tool.params) {
     if (args[param.name] === undefined) continue;
+    // Clients that run OpenAI-style strict tool schemas must send every
+    // property, so an optional filter they mean to leave out arrives as null,
+    // "" or []. Upstream counts any present value as supplied: cudaVersions: []
+    // next to minCudaVersion is a 400 "mutually exclusive", lastN: null next to
+    // startTime is "lastN cannot be combined", and cursor: "" is a 422 invalid
+    // cursor on the first page. None of those can be meant as a value, so an
+    // empty optional query param is treated as omitted.
+    if (
+      param.location === 'query' &&
+      !required.has(param.name) &&
+      isEmptyValue(args[param.name])
+    )
+      continue;
     if (param.location === 'path') {
       pathParams[param.name] = args[param.name];
       continue;
@@ -130,6 +144,21 @@ export async function dispatchGeneratedTool(
     }
   }
 
+  // Some clients stringify every scalar inside a nested body (disk: "20",
+  // workers.max: "1"), and upstream rejects each one with "$.disk: got string,
+  // want integer". The body schema says what each field is, so a string that
+  // is exactly a number or boolean where the schema wants one is converted
+  // back. Anything else is forwarded untouched for upstream to judge.
+  if (tool.hasBody && requestBody !== undefined) {
+    const properties = (tool.inputSchema.properties ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const defs = ((tool.inputSchema as { $defs?: unknown }).$defs ??
+      {}) as Record<string, unknown>;
+    requestBody = coerceScalars(requestBody, properties.body, defs);
+  }
+
   // openapi-fetch is typed per literal path; generated dispatch is generic by
   // construction, so the client is narrowed to the structural shape of a verb
   // call rather than asserted to any.
@@ -154,4 +183,115 @@ export async function dispatchGeneratedTool(
     status: response.status,
     payload: data ?? { status: response.status },
   };
+}
+
+function isEmptyValue(value: unknown): boolean {
+  return (
+    value === null || value === '' || (Array.isArray(value) && !value.length)
+  );
+}
+
+type Schema = Record<string, unknown>;
+
+function asSchema(value: unknown): Schema | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Schema)
+    : undefined;
+}
+
+// Follows local `#/$defs/Name` refs. Depth-capped so a self-referencing
+// definition cannot loop.
+function resolveSchema(
+  schema: unknown,
+  defs: Record<string, unknown>,
+  depth = 0
+): Schema | undefined {
+  const node = asSchema(schema);
+  if (!node || depth > 16) return node;
+  const ref = node.$ref;
+  if (typeof ref === 'string' && ref.startsWith('#/$defs/'))
+    return resolveSchema(defs[ref.slice('#/$defs/'.length)], defs, depth + 1);
+  return node;
+}
+
+// Every schema that applies to a value: the node itself plus its allOf,
+// anyOf and oneOf branches, refs resolved.
+function branches(
+  schema: unknown,
+  defs: Record<string, unknown>,
+  depth = 0
+): Schema[] {
+  const node = resolveSchema(schema, defs);
+  if (!node || depth > 16) return [];
+  const out = [node];
+  for (const key of ['allOf', 'anyOf', 'oneOf']) {
+    const list = node[key];
+    if (Array.isArray(list))
+      for (const sub of list) out.push(...branches(sub, defs, depth + 1));
+  }
+  return out;
+}
+
+function types(schemas: Schema[]): Set<string> {
+  const out = new Set<string>();
+  for (const s of schemas) {
+    if (typeof s.type === 'string') out.add(s.type);
+    else if (Array.isArray(s.type))
+      for (const t of s.type) if (typeof t === 'string') out.add(t);
+  }
+  return out;
+}
+
+const NUMERIC = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
+
+export function coerceScalars(
+  value: unknown,
+  schema: unknown,
+  defs: Record<string, unknown>,
+  depth = 0
+): unknown {
+  if (depth > 32) return value;
+  const applicable = branches(schema, defs);
+  if (!applicable.length) return value;
+  const allowed = types(applicable);
+
+  if (typeof value === 'string') {
+    // A string field stays a string even when it looks like a number.
+    if (allowed.has('string')) return value;
+    if (
+      (allowed.has('integer') || allowed.has('number')) &&
+      NUMERIC.test(value)
+    ) {
+      const n = Number(value);
+      if (allowed.has('number') || Number.isInteger(n)) return n;
+    }
+    if (allowed.has('boolean') && (value === 'true' || value === 'false'))
+      return value === 'true';
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const items = applicable.map((s) => s.items).filter(Boolean);
+    if (!items.length) return value;
+    return value.map((item) =>
+      coerceScalars(item, { anyOf: items }, defs, depth + 1)
+    );
+  }
+
+  const object = asSchema(value);
+  if (!object) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(object)) {
+    const childSchemas: unknown[] = [];
+    for (const s of applicable) {
+      const props = asSchema(s.properties);
+      if (props && key in props) childSchemas.push(props[key]);
+      else if (asSchema(s.additionalProperties))
+        childSchemas.push(s.additionalProperties);
+    }
+    out[key] = childSchemas.length
+      ? coerceScalars(child, { anyOf: childSchemas }, defs, depth + 1)
+      : child;
+  }
+  return out;
 }

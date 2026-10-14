@@ -340,9 +340,40 @@ export function createSpecgenServer(
   return server;
 }
 
-function errorHint(status: number): string | undefined {
-  if (status === 400 || status === 422)
-    return "Input shape mismatch: check this tool's schema for required fields. For job payloads, the worker's release config defines the expected input object — fix the payload and retry; don't abandon the task.";
+const SHAPE_HINT =
+  "Input shape mismatch: check this tool's schema for required fields. For job payloads, the worker's release config defines the expected input object — fix the payload and retry; don't abandon the task.";
+
+// Upstream answers business-rule failures with a 400 too: no capacity, no
+// balance, conflicting filters. Calling those an input-shape mismatch sent
+// agents re-reading a schema they had followed exactly, so a 400 whose detail
+// names one of those causes gets a hint about that cause instead. The shape
+// hint stays for real validation failures (a 422, or a 400 carrying field
+// errors) and for anything unrecognised.
+const DETAIL_HINTS: ReadonlyArray<readonly [RegExp, string]> = [
+  [
+    /no longer any instances available|not enough free GPUs/i,
+    "Capacity, not input: the request is valid but no machine can take it right now. Don't change the payload shape. Retry with another GPU type, data center, cloud, CUDA version or count, or try again later. For a stopped Pod, its host's GPUs are taken; that Pod can only start once they free up.",
+  ],
+  [
+    /at least \$\d|insufficient (?:funds|balance)|\bbalance\b/i,
+    'Account balance, not input: this operation needs funds on the account. Ask the user to add credit in the Runpod console; list-billing shows recent spend.',
+  ],
+  [
+    /mutually exclusive|cannot be combined with/i,
+    'Two arguments conflict: send only one of them and leave the other out entirely. Do not change anything else.',
+  ],
+];
+
+function errorHint(status: number, detail?: string): string | undefined {
+  if (status === 400 && detail) {
+    for (const [pattern, hint] of DETAIL_HINTS)
+      if (pattern.test(detail)) return hint;
+    // A 400 with a bare "Unauthorized" detail from a write the same key can
+    // otherwise make is upstream's answer for an unfunded account.
+    if (/^unauthorized$/i.test(detail.trim()))
+      return 'Upstream refused this write. With a key that can read, this usually means the account has no balance: ask the user to check their balance in the Runpod console before retrying.';
+  }
+  if (status === 400 || status === 422) return SHAPE_HINT;
   if (status === 401) return 'The Runpod API key is missing or invalid.';
   if (status === 402)
     return 'Check your account balance in the Runpod console before retrying billable operations; list-billing shows the recent spend behind it.';
@@ -365,7 +396,9 @@ function withRecoveryHint(
 ): Record<string, unknown> {
   const payload = asRecord(result.payload) ?? { error: result.payload };
   const hint =
-    payload.hint ?? asRecord(payload.detail)?.hint ?? errorHint(result.status);
+    payload.hint ??
+    asRecord(payload.detail)?.hint ??
+    errorHint(result.status, detailText(payload));
   const shapeRejected = result.status === 400 || result.status === 422;
   return {
     ...payload,
@@ -374,6 +407,16 @@ function withRecoveryHint(
         ? [hint, CALL_SHAPE_ONLY_HINT].filter(Boolean).join(' ')
         : hint,
   };
+}
+
+// The upstream reason, wherever the error payload carries it. Field-level
+// validation errors are not a detail: they mean the shape really is wrong.
+function detailText(payload: Record<string, unknown>): string | undefined {
+  if (Array.isArray(payload.errors) && payload.errors.length) return undefined;
+  const detail = payload.detail ?? payload.error;
+  if (typeof detail === 'string') return detail;
+  const nested = asRecord(detail);
+  return typeof nested?.detail === 'string' ? nested.detail : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
