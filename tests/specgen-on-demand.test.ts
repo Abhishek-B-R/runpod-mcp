@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   callShape,
   listTool,
+  listedAnnotations,
   DESCRIBE_TOOL_NAME,
 } from '#src/specgen/on-demand';
 import { similarNames } from '#src/specgen/tools/describe';
@@ -77,13 +78,35 @@ test('listTool passes ordinary tools through and shortens flagged ones with a po
     inputSchema: full,
     annotations,
   };
-  assert.deepEqual(listTool(tool), tool);
+  const served = { ...tool, annotations: listedAnnotations(annotations) };
+  assert.deepEqual(listTool(tool), served);
   const listed = listTool({ ...tool, schemaOnDemand: true });
   assert.ok(listed.description.startsWith('Does x. '));
   assert.match(listed.description, new RegExp(DESCRIBE_TOOL_NAME));
   assert.deepEqual(listed.inputSchema, callShape(full));
-  assert.equal(listed.annotations, annotations);
+  assert.deepEqual(listed.annotations, served.annotations);
   assert.equal('schemaOnDemand' in listed, false);
+});
+
+test('listedAnnotations leaves out only the hints equal to their MCP spec default', () => {
+  assert.deepEqual(listedAnnotations(annotations), {
+    readOnlyHint: false,
+    destructiveHint: false,
+  });
+  assert.deepEqual(
+    listedAnnotations({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    }),
+    {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    }
+  );
 });
 
 test('similarNames offers the tools sharing a word with a guessed name', () => {

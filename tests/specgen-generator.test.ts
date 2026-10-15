@@ -374,6 +374,33 @@ test('property description overrides replace the spec text by address and reject
   );
 });
 
+test('a description override on a composed schema lands once, not on each allOf member', () => {
+  const spec: SpecDocument = {
+    ...bodySpec({ $ref: '#/components/schemas/Mounts' }),
+    components: {
+      schemas: {
+        BaseMounts: {
+          type: 'object',
+          properties: { network: { type: 'array' } },
+        },
+        Mounts: {
+          allOf: [
+            { $ref: '#/components/schemas/BaseMounts' },
+            { type: 'object', properties: { global: { type: 'array' } } },
+          ],
+        },
+      },
+    },
+  };
+  const [tool] = generateTools(spec, {
+    propertyDescriptions: { Mounts: 'One persistent or one network mount.' },
+  });
+  const mounts = body(tool).$defs!.Mounts;
+  assert.equal(mounts.description, 'One persistent or one network mount.');
+  for (const member of mounts.allOf!)
+    assert.equal(member.description, undefined);
+});
+
 test('schemaOnDemand flags the listed operations and rejects stale ids', () => {
   const spec = bodySpec({ type: 'object' });
   assert.equal(

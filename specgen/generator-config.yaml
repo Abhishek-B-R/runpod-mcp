@@ -125,11 +125,13 @@ descriptions:
 # operationIds listed with their call shape only: top-level arguments with
 # their types, nested objects collapsed. describe-tool serves the full schema,
 # which still gates every call. For large request bodies that few sessions
-# send, so every handshake stops carrying them. create-pod stays inline: as
-# large, but among the most-called tools. The generator rejects an operationId
-# absent from the spec.
+# send, so every handshake stops carrying them. create-pod is among the
+# most-called tools but joined once global mounts took it past 10 KB: one
+# describe-tool call per session costs less than the schema on every
+# handshake. The generator rejects an operationId absent from the spec.
 schemaOnDemand:
   - createEndpoint
+  - createPod
   - updateEndpoint
   - createCluster
   - updatePod

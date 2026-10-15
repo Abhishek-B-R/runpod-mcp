@@ -13,19 +13,41 @@ const ON_DEMAND_POINTER = ` Call ${DESCRIBE_TOOL_NAME} for the full argument sch
 
 type Schema = Record<string, unknown>;
 
+// The MCP spec defaults for the two hints that may be left out. readOnlyHint
+// and destructiveHint are always sent: destructiveHint defaults to true, and
+// hosts gate on both.
+const OMITTED_HINT_DEFAULTS = {
+  idempotentHint: false,
+  openWorldHint: true,
+} as const;
+
 export interface ListedTool {
   name: string;
   description: string;
   inputSchema: Schema;
-  annotations: ToolAnnotations;
+  annotations: Partial<ToolAnnotations>;
 }
 
 export interface ListableTool extends ListedTool {
+  annotations: ToolAnnotations;
   schemaOnDemand?: boolean;
 }
 
+// Every tools/list carries the annotations of every tool, so a hint equal to
+// its spec default is left out; the client reads the same value either way.
+export function listedAnnotations(
+  annotations: ToolAnnotations
+): Partial<ToolAnnotations> {
+  const listed: Partial<ToolAnnotations> = { ...annotations };
+  for (const [hint, value] of Object.entries(OMITTED_HINT_DEFAULTS))
+    if (listed[hint as keyof typeof OMITTED_HINT_DEFAULTS] === value)
+      delete listed[hint as keyof typeof OMITTED_HINT_DEFAULTS];
+  return listed;
+}
+
 export function listTool(tool: ListableTool): ListedTool {
-  const { name, description, inputSchema, annotations } = tool;
+  const { name, description, inputSchema } = tool;
+  const annotations = listedAnnotations(tool.annotations);
   if (!tool.schemaOnDemand)
     return { name, description, inputSchema, annotations };
   return {

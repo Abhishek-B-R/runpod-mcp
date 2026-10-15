@@ -357,7 +357,7 @@ test('generation freshness check rejects stale schemas and config without writin
 // context for the whole session. The budgets pin today's surface as listed
 // (schemaOnDemand tools count at their call shape) so a spec pull or a new
 // tool cannot regrow it unnoticed; raise one only with the reason in the PR.
-const GENERATED_SURFACE_BUDGET_BYTES = 71_000;
+const GENERATED_SURFACE_BUDGET_BYTES = 64_000;
 const CURATED_SURFACE_BUDGET_BYTES = 30_000;
 const ARGUMENT_DESCRIPTION_CAP_BYTES = 400;
 

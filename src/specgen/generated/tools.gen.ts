@@ -931,6 +931,7 @@ export const generatedTools: GeneratedTool[] = [
       idempotentHint: false,
       openWorldHint: true,
     },
+    schemaOnDemand: true,
     inputSchema: {
       type: 'object',
       properties: {
@@ -1247,8 +1248,6 @@ export const generatedTools: GeneratedTool[] = [
           allOf: [
             {
               $ref: '#/$defs/BaseMounts',
-              description:
-                "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
             },
             {
               type: 'object',
@@ -1263,8 +1262,6 @@ export const generatedTools: GeneratedTool[] = [
                   },
                 },
               },
-              description:
-                "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
             },
           ],
           unevaluatedProperties: false,
@@ -4189,8 +4186,6 @@ export const generatedTools: GeneratedTool[] = [
           allOf: [
             {
               $ref: '#/$defs/BaseEndpointGpuConfig',
-              description:
-                'Partial GPU update — every field is optional and an omitted one is left unchanged. `pools` is optional here, so a CUDA-only change does not resend the pool list; `excludedTypes` needs `pools` in the same request, and `pools` sent alone clears the exclusions.',
             },
             {
               type: 'object',
@@ -4215,8 +4210,6 @@ export const generatedTools: GeneratedTool[] = [
                   examples: ['12.1'],
                 },
               },
-              description:
-                'Partial GPU update — every field is optional and an omitted one is left unchanged. `pools` is optional here, so a CUDA-only change does not resend the pool list; `excludedTypes` needs `pools` in the same request, and `pools` sent alone clears the exclusions.',
             },
           ],
           unevaluatedProperties: false,
@@ -4564,8 +4557,6 @@ export const generatedTools: GeneratedTool[] = [
           allOf: [
             {
               $ref: '#/$defs/BaseMounts',
-              description:
-                "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
             },
             {
               type: 'object',
@@ -4580,8 +4571,6 @@ export const generatedTools: GeneratedTool[] = [
                   },
                 },
               },
-              description:
-                "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
             },
           ],
           unevaluatedProperties: false,
