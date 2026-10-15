@@ -38,31 +38,29 @@ async function listTools() {
   return tools;
 }
 
-// tools/list leaves out a hint equal to its MCP spec default; a client reads
-// the omitted hint as that default.
-const specDefaults = { idempotentHint: false, openWorldHint: true } as const;
-
-test('every tool reaches the client with its gating hints, defaults left out', async () => {
+test('every tool reaches the client with its hints, idempotentHint false left out', async () => {
   const tools = await listTools();
   for (const tool of tools) {
     const annotations = tool.annotations;
     assert.ok(annotations, `${tool.name} must carry annotations`);
-    // Hosts gate on these two, and destructiveHint defaults to true.
-    for (const hint of ['readOnlyHint', 'destructiveHint'] as const) {
+    for (const hint of [
+      'readOnlyHint',
+      'destructiveHint',
+      'openWorldHint',
+    ] as const) {
       assert.equal(
         typeof annotations[hint],
         'boolean',
         `${tool.name}.${hint} must be a boolean`
       );
     }
-    for (const [hint, value] of Object.entries(specDefaults))
-      assert.notEqual(
-        annotations[hint as keyof typeof specDefaults],
-        value,
-        `${tool.name}.${hint} equals its spec default and must be left out`
-      );
-    const openWorld = annotations.openWorldHint ?? specDefaults.openWorldHint;
-    assert.equal(openWorld, !localToolNames.has(tool.name));
+    // tools/list leaves out idempotentHint when false, its MCP spec default.
+    assert.notEqual(
+      annotations.idempotentHint,
+      false,
+      `${tool.name}.idempotentHint is false and must be left out`
+    );
+    assert.equal(annotations.openWorldHint, !localToolNames.has(tool.name));
     if (annotations.readOnlyHint)
       assert.equal(
         annotations.destructiveHint,

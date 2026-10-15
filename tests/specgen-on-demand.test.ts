@@ -88,10 +88,11 @@ test('listTool passes ordinary tools through and shortens flagged ones with a po
   assert.equal('schemaOnDemand' in listed, false);
 });
 
-test('listedAnnotations leaves out only the hints equal to their MCP spec default', () => {
+test('listedAnnotations leaves out idempotentHint only when false', () => {
   assert.deepEqual(listedAnnotations(annotations), {
     readOnlyHint: false,
     destructiveHint: false,
+    openWorldHint: true,
   });
   assert.deepEqual(
     listedAnnotations({
