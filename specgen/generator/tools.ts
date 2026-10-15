@@ -89,14 +89,18 @@ function childAddress(key: string, address: string): string {
 // Walk schema positions only. An enum, default, example or property name may
 // contain text that looks like prose or a reference; those are API data. The
 // address names a position for overrides: definitions restart it, properties
-// extend it, composition keywords pass it through unchanged.
+// extend it, composition keywords and prefixItems pass it through unchanged
+// and mark the member as composed, so one address can name the whole and its
+// parts.
 function mapSchema(
   node: unknown,
   map: (
     schema: Record<string, unknown>,
-    address: string
+    address: string,
+    composed: boolean
   ) => Record<string, unknown>,
-  address = ''
+  address = '',
+  composed = false
 ): unknown {
   if (!node || typeof node !== 'object' || Array.isArray(node)) return node;
   const schema = Object.fromEntries(
@@ -118,13 +122,16 @@ function mapSchema(
         ];
       }
       if (schemaArrays.has(key) && Array.isArray(value))
-        return [key, value.map((child) => mapSchema(child, map, address))];
+        return [
+          key,
+          value.map((child) => mapSchema(child, map, address, true)),
+        ];
       if (schemaChildren.has(key))
         return [key, mapSchema(value, map, childAddress(key, address))];
       return [key, value];
     })
   );
-  return map(schema, address);
+  return map(schema, address, composed);
 }
 
 function rewriteRef(ref: string): string {
@@ -149,9 +156,11 @@ function normalizeSchema(
 ): unknown {
   return mapSchema(
     node,
-    (schema, at) => {
+    (schema, at, composed) => {
       if (typeof schema.title === 'string') schema.title = prose(schema.title);
-      const override = context.overrides[at];
+      // A composition or prefixItems member shares its parent's address; the
+      // override describes the whole, so it lands once, on the parent.
+      const override = composed ? undefined : context.overrides[at];
       if (override !== undefined) {
         schema.description = override;
         context.usedOverrides.add(at);

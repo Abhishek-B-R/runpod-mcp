@@ -38,7 +38,7 @@ async function listTools() {
   return tools;
 }
 
-test('every tool reaches the client with a complete annotation set', async () => {
+test('every tool reaches the client with its hints, idempotentHint false left out', async () => {
   const tools = await listTools();
   for (const tool of tools) {
     const annotations = tool.annotations;
@@ -46,7 +46,6 @@ test('every tool reaches the client with a complete annotation set', async () =>
     for (const hint of [
       'readOnlyHint',
       'destructiveHint',
-      'idempotentHint',
       'openWorldHint',
     ] as const) {
       assert.equal(
@@ -55,6 +54,12 @@ test('every tool reaches the client with a complete annotation set', async () =>
         `${tool.name}.${hint} must be a boolean`
       );
     }
+    // tools/list leaves out idempotentHint when false, its MCP spec default.
+    assert.notEqual(
+      annotations.idempotentHint,
+      false,
+      `${tool.name}.idempotentHint is false and must be left out`
+    );
     assert.equal(annotations.openWorldHint, !localToolNames.has(tool.name));
     if (annotations.readOnlyHint)
       assert.equal(
@@ -84,6 +89,7 @@ test('generated annotations follow the HTTP method they wrap, plus config overri
     [
       'delete-cluster',
       'delete-endpoint',
+      'delete-global-volume',
       'delete-network-volume',
       'delete-pod',
       'delete-registry',

@@ -17,15 +17,29 @@ export interface ListedTool {
   name: string;
   description: string;
   inputSchema: Schema;
-  annotations: ToolAnnotations;
+  annotations: Partial<ToolAnnotations>;
 }
 
 export interface ListableTool extends ListedTool {
+  annotations: ToolAnnotations;
   schemaOnDemand?: boolean;
 }
 
+// Every tools/list carries the annotations of every tool, so idempotentHint is
+// left out when false, its MCP spec default; the client reads the same value
+// either way. The other three are always sent: hosts gate on readOnlyHint and
+// destructiveHint (which defaults to true), and some directory reviews look
+// for openWorldHint itself.
+export function listedAnnotations(
+  annotations: ToolAnnotations
+): Partial<ToolAnnotations> {
+  const { idempotentHint, ...listed } = annotations;
+  return idempotentHint ? annotations : listed;
+}
+
 export function listTool(tool: ListableTool): ListedTool {
-  const { name, description, inputSchema, annotations } = tool;
+  const { name, description, inputSchema } = tool;
+  const annotations = listedAnnotations(tool.annotations);
   if (!tool.schemaOnDemand)
     return { name, description, inputSchema, annotations };
   return {
