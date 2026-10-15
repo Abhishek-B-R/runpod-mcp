@@ -39,8 +39,11 @@ CONVEX_DEPLOY_KEY=<key> npx convex env set ALP_SINK_SECRET <same value as Vercel
 ```
 
 The write mutation imports the shared redactor from `src/alp/scrub.ts` and
-reapplies it before insertion. Deploy both Convex environments when that shared
-module or the mutation changes; a Vercel deploy alone does not update the sink.
+reapplies it before insertion. A production Vercel build deploys the production sink first
+(`npx convex deploy` in `vercel.json`, using the integration's
+`CONVEX_DEPLOY_KEY`), so a failed Convex push fails the Vercel deploy instead
+of shipping a server ahead of its sink. The development sink is not built by
+Vercel: deploy it by hand when the shared module or a mutation changes.
 
 The same deployment also holds the hosted server's 404 counters
 (`notFoundCounters`, `convex/rateLimit.ts`, route `/ratelimit/not-found`). The
