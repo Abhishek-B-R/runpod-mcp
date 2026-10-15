@@ -32,4 +32,9 @@ export interface CuratedTool {
   /** Resolves the kind of guide a call reads (skill, reference or
    *  golden-path), recorded as guide_kind. Undefined when nothing matched. */
   recordedGuideKind?: (args: Record<string, unknown>) => string | undefined;
+  /** The handler may hold the response open longer than a client's request
+   *  timeout (long-poll or streamed reads). The hosted transport answers such
+   *  tools over SSE, which clients read under their longer stream timeout;
+   *  every other tool answers as JSON so the CDN can compress it. */
+  holdsResponse?: boolean;
 }

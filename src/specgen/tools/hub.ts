@@ -324,6 +324,8 @@ export const listHubRepos: CuratedTool = {
 
 export const deployHubRepo: CuratedTool = {
   name: 'deploy-hub-repo',
+  // Two sequential upstream calls: together they can outlast a client's request timeout.
+  holdsResponse: true,
   annotations: write,
   description:
     "Deploy a Runpod Hub repo's listed release as a new Serverless endpoint (the same as clicking Deploy on the Hub). Identify the repo by `repo` (\"owner/name\" from list-hub-repos) or by `hubReleaseId`. The release supplies the prebuilt image, container disk, CUDA constraints, and env-var defaults; pass `env` to override or fill in values (required keys without a default must be provided — check list-hub-repos with includeConfig:true for the schema). GPU selection comes from the release config when it specifies one; otherwise pass gpuIds (GPU pool names, e.g. 'ADA_24' or 'ADA_80_PRO,AMPERE_80'). Uses the authenticated GraphQL API (no REST home for Hub deploys yet).",
