@@ -98,7 +98,7 @@ bearer_token_env_var = "RUNPOD_API_KEY"
 
 Then export `RUNPOD_API_KEY` in the shell that launches Codex.
 
-You can also [run the server locally](#run-locally-with-npx). The local server talks to the Runpod API directly and never touches the hosted firewall.
+You can also [run the server locally](#run-locally-with-npx). The local server calls the Runpod API directly, so the hosted firewall only affects its `search-docs` tool, which still searches through the hosted server.
 
 ### Usage analytics
 
