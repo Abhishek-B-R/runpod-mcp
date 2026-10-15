@@ -15,8 +15,8 @@ importers:
         specifier: ^1.7.0
         version: 1.20.2
       '@runpod/plugin-knowledge':
-        specifier: ^1.7.1
-        version: 1.7.1
+        specifier: ^1.7.4
+        version: 1.7.4
       jsonc-parser:
         specifier: ^3.3.1
         version: 3.3.1
@@ -31,8 +31,8 @@ importers:
         specifier: ^2.29.6
         version: 2.29.7(@types/node@20.19.24)
       '@runpod/typescript-api-sdk':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.3.0
+        version: 0.3.0
       '@types/node':
         specifier: ^20.10.5
         version: 20.19.24
@@ -735,12 +735,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@runpod/plugin-knowledge@1.7.1':
-    resolution: {integrity: sha512-G7lAC9HB6GLUR2SzS2uzvpy+1izHaCOxargf4cIhFAAowIVEoZwWEyzLGNNmQ35SEvEQVZxrAdc30/v93G6TqQ==}
+  '@runpod/plugin-knowledge@1.7.4':
+    resolution: {integrity: sha512-kXzagLIxhwaEUd0nHyamJ5CMLmcV8kSzTGPOhD9XTS0Q2fwOSnBNz/GB5h09ImobLbxTxcWs6yUkD5YdYifalg==}
     engines: {node: '>=20.10'}
 
-  '@runpod/typescript-api-sdk@0.2.0':
-    resolution: {integrity: sha512-9f208vafEUP7v/LrAyPb7QnvGPAEAZOYO7mveOhWzAC3ImZkSZEvGMmoRBySg1aIt7LUtJ+k1SojWTw9xaMDoA==}
+  '@runpod/typescript-api-sdk@0.3.0':
+    resolution: {integrity: sha512-B51R8n9CH2wdTLgbC2Fpql9aUZBoUpCM4KITW+Kn04oONwLkipB+Ey7Zyk+m1fqBjhvNfe9Hz1qWddHWsrYyww==}
     engines: {node: '>=20'}
 
   '@ts-morph/common@0.11.1':
@@ -2816,9 +2816,9 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.52.5':
     optional: true
 
-  '@runpod/plugin-knowledge@1.7.1': {}
+  '@runpod/plugin-knowledge@1.7.4': {}
 
-  '@runpod/typescript-api-sdk@0.2.0':
+  '@runpod/typescript-api-sdk@0.3.0':
     dependencies:
       openapi-fetch: 0.17.0
       structured-headers: 2.1.0

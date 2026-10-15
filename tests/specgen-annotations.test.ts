@@ -84,6 +84,7 @@ test('generated annotations follow the HTTP method they wrap, plus config overri
     [
       'delete-cluster',
       'delete-endpoint',
+      'delete-global-volume',
       'delete-network-volume',
       'delete-pod',
       'delete-registry',
