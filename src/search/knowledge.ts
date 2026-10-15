@@ -161,7 +161,18 @@ export async function searchKnowledge(
         signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
       });
       if (res.ok) {
-        const data = (await res.json()) as Partial<SearchResponse>;
+        // A non-JSON 200 (proxy page, truncated body) is an upstream fault,
+        // not an unreachable one.
+        const data = (await res
+          .json()
+          .catch(() => null)) as Partial<SearchResponse> | null;
+        if (!data) {
+          console.warn('knowledge_search_failed status=200 invalid_json');
+          return {
+            status: 502,
+            body: { error: 'Runpod knowledge search failed.' },
+          };
+        }
         return {
           status: 200,
           body: {

@@ -222,6 +222,18 @@ test('searchKnowledge reports a timeout as a 504 and missing config as a 503', a
   assert.equal(unconfigured.status, 503);
 });
 
+test('searchKnowledge reports a non-JSON 200 as a 502, not unreachable', async () => {
+  const outcome = await searchKnowledge(
+    { query: 'q' },
+    {
+      env: ENV,
+      fetch: async () =>
+        new Response('<html>proxy error</html>', { status: 200 }),
+    }
+  );
+  assert.equal(outcome.status, 502);
+});
+
 function fakeRes() {
   const res = {
     statusCode: 0,
@@ -272,14 +284,14 @@ test('/api/search requires a valid Runpod key', async () => {
   assert.equal(none.upstreamCalls + invalid.upstreamCalls, 0);
 });
 
-test('/api/search fails open when the key cannot be checked, and validates input', async () => {
-  const open = await route(
+test('/api/search fails closed when the key cannot be checked, and validates input', async () => {
+  const closed = await route(
     { authorization: 'Bearer rpa_x' },
     { query: 'q' },
     'unknown'
   );
-  assert.equal(open.statusCode, 200);
-  assert.equal((open.body as { text: string }).text, OK_BODY.text);
+  assert.equal(closed.statusCode, 503);
+  assert.equal(closed.upstreamCalls, 0);
   const bad = await route({ authorization: 'Bearer rpa_x' }, { query: '' });
   assert.equal(bad.statusCode, 400);
   assert.equal(bad.upstreamCalls, 0);

@@ -46,11 +46,18 @@ export async function handleSearch(
     send(400, { error: parsed.error });
     return;
   }
-  // Only a key the API rejects is refused. An unreachable auth backend fails
-  // open: a docs search exposes nothing account-scoped.
+  // Only a key the API confirms is served. Every call spends the service
+  // key's search capacity, so an unreachable auth backend fails closed.
   const verdict = await (opts.verify ?? defaultCredentialChecker.verify)(token);
   if (verdict.status === 'invalid') {
     send(401, { error: 'This Runpod API key is not valid.' });
+    return;
+  }
+  if (verdict.status !== 'valid') {
+    send(503, {
+      error: 'Could not verify your Runpod API key right now.',
+      hint: 'Retry the same call in a few seconds.',
+    });
     return;
   }
   const outcome = await searchKnowledge(parsed.request, opts);
