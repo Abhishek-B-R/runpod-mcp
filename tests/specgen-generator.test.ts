@@ -374,14 +374,17 @@ test('property description overrides replace the spec text by address and reject
   );
 });
 
-test('a description override on a composed schema lands once, not on each allOf member', () => {
+test('a description override on a composed schema lands once, not on each member', () => {
   const spec: SpecDocument = {
     ...bodySpec({ $ref: '#/components/schemas/Mounts' }),
     components: {
       schemas: {
         BaseMounts: {
           type: 'object',
-          properties: { network: { type: 'array' } },
+          properties: {
+            size: { $ref: '#/components/schemas/Size' },
+            pair: { $ref: '#/components/schemas/Pair' },
+          },
         },
         Mounts: {
           allOf: [
@@ -389,16 +392,31 @@ test('a description override on a composed schema lands once, not on each allOf 
             { type: 'object', properties: { global: { type: 'array' } } },
           ],
         },
+        Size: { anyOf: [{ type: 'integer' }, { type: 'string' }] },
+        Pair: {
+          type: 'array',
+          prefixItems: [{ type: 'string' }, { type: 'integer' }],
+        },
       },
     },
   };
-  const [tool] = generateTools(spec, {
-    propertyDescriptions: { Mounts: 'One persistent or one network mount.' },
-  });
-  const mounts = body(tool).$defs!.Mounts;
-  assert.equal(mounts.description, 'One persistent or one network mount.');
-  for (const member of mounts.allOf!)
-    assert.equal(member.description, undefined);
+  const overrides = {
+    Mounts: 'One persistent or one network mount.',
+    Size: 'GB.',
+    Pair: 'Name and count.',
+  };
+  const [tool] = generateTools(spec, { propertyDescriptions: overrides });
+  const defs = body(tool).$defs!;
+  for (const [name, members] of [
+    ['Mounts', 'allOf'],
+    ['Size', 'anyOf'],
+    ['Pair', 'prefixItems'],
+  ] as const) {
+    const schema = defs[name] as Record<string, unknown>;
+    assert.equal(schema.description, overrides[name]);
+    for (const member of schema[members] as Schema[])
+      assert.equal(member.description, undefined, `${name}.${members}`);
+  }
 });
 
 test('schemaOnDemand flags the listed operations and rejects stale ids', () => {

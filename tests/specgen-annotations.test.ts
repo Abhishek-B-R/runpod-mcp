@@ -42,7 +42,7 @@ async function listTools() {
 // the omitted hint as that default.
 const specDefaults = { idempotentHint: false, openWorldHint: true } as const;
 
-test('every tool reaches the client with a complete annotation set', async () => {
+test('every tool reaches the client with its gating hints, defaults left out', async () => {
   const tools = await listTools();
   for (const tool of tools) {
     const annotations = tool.annotations;

@@ -89,8 +89,9 @@ function childAddress(key: string, address: string): string {
 // Walk schema positions only. An enum, default, example or property name may
 // contain text that looks like prose or a reference; those are API data. The
 // address names a position for overrides: definitions restart it, properties
-// extend it, composition keywords pass it through unchanged and mark the
-// member as composed, so one address can name the whole and its parts.
+// extend it, composition keywords and prefixItems pass it through unchanged
+// and mark the member as composed, so one address can name the whole and its
+// parts.
 function mapSchema(
   node: unknown,
   map: (
@@ -123,9 +124,7 @@ function mapSchema(
       if (schemaArrays.has(key) && Array.isArray(value))
         return [
           key,
-          value.map((child) =>
-            mapSchema(child, map, address, key !== 'prefixItems')
-          ),
+          value.map((child) => mapSchema(child, map, address, true)),
         ];
       if (schemaChildren.has(key))
         return [key, mapSchema(value, map, childAddress(key, address))];
@@ -159,8 +158,8 @@ function normalizeSchema(
     node,
     (schema, at, composed) => {
       if (typeof schema.title === 'string') schema.title = prose(schema.title);
-      // An allOf member shares its parent's address; the override describes
-      // the whole, so it lands once, on the parent.
+      // A composition or prefixItems member shares its parent's address; the
+      // override describes the whole, so it lands once, on the parent.
       const override = composed ? undefined : context.overrides[at];
       if (override !== undefined) {
         schema.description = override;

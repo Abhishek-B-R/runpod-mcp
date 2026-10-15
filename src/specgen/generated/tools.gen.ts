@@ -1244,7 +1244,7 @@ export const generatedTools: GeneratedTool[] = [
         },
         Mounts: {
           description:
-            "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
+            "Storage mounts for the pod: `persistent` (size + path) excludes both `network` and `global`; `network` (volumeId + path) and `global` (volumeId, optional path) take one entry each and can be combined. Every entry needs its full shape. On update, omit the field to leave the mounts as they are; the mount kind and a volume's volumeId cannot change, and mounts cannot be cleared.",
           allOf: [
             {
               $ref: '#/$defs/BaseMounts',
@@ -4553,7 +4553,7 @@ export const generatedTools: GeneratedTool[] = [
         },
         Mounts: {
           description:
-            "Storage mounts for the pod: at most one of `persistent` (size + path) or `network` (volumeId + path, a single entry) may be set, and every entry needs its full shape. On update, omit the field to leave the mount as it is; the mount kind and a network mount's volumeId cannot change, and mounts cannot be cleared.",
+            "Storage mounts for the pod: `persistent` (size + path) excludes both `network` and `global`; `network` (volumeId + path) and `global` (volumeId, optional path) take one entry each and can be combined. Every entry needs its full shape. On update, omit the field to leave the mounts as they are; the mount kind and a volume's volumeId cannot change, and mounts cannot be cleared.",
           allOf: [
             {
               $ref: '#/$defs/BaseMounts',
