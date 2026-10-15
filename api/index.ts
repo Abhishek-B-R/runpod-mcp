@@ -228,6 +228,7 @@ async function createFlashAuthRequest(codeChallenge: string): Promise<string> {
   // These fields require the PKCE-aware flash auth backend schema.
   parts.push(`codeChallenge: ${JSON.stringify(codeChallenge)}`);
   parts.push('codeChallengeMethod: "S256"');
+  parts.push('oauthCodeExchange: true');
   const args = parts.length ? `(${parts.join(', ')})` : '';
   const data = await flashGraphql<{ id: string }>(
     `mutation { createFlashAuthRequest${args} { id } }`,

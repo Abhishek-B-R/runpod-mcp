@@ -183,6 +183,7 @@ describe('dynamic ChatGPT registration', () => {
     const accepted = await authorize(CHATGPT_REDIRECT, clientId);
     assert.equal(accepted.statusCode, 302);
     assert.equal(backendRequests.length, 1);
+    assert.match(backendRequests[0], /oauthCodeExchange: true/);
 
     const rejected = await authorize(OTHER_CHATGPT_REDIRECT, clientId);
     assert.equal(rejected.statusCode, 400);
