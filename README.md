@@ -86,7 +86,7 @@ An OAuth-capable client starts the "Sign in with Runpod" flow automatically on f
 
 ### If sign-in fails with HTTP 403
 
-A `403 Forbidden` response with the header `X-Vercel-Mitigated: deny` means the hosted server's firewall has temporarily blocked your IP address, usually after a burst of unauthenticated requests from an MCP client. The block covers every path, including `/register` and requests that carry an API key, and lifts on its own within an hour. Wait for it to expire, then use one of these options so the next connection doesn't trip it again.
+A `403 Forbidden` response with the header `X-Vercel-Mitigated: deny` means the hosted server's firewall has temporarily blocked your IP address, usually after a burst of unauthenticated requests from an MCP client. This happens most often with Codex, which sends many unauthenticated requests while it signs in. The block covers every path, including `/register` and requests that carry an API key, and lifts on its own within an hour. Wait for it to expire, then use one of these options so the next connection doesn't trip it again.
 
 You can send your API key as a header instead of signing in with OAuth, as described above. Authenticated requests don't count toward the limit. In Codex, add the key to the server entry in `~/.codex/config.toml`:
 
