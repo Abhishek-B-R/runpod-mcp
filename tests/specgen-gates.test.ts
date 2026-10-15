@@ -15,6 +15,7 @@ import { generatedTools } from '#src/specgen/generated/tools.gen';
 import { listTool, type ListableTool } from '#src/specgen/on-demand';
 import { curatedTools, createSpecgenServer } from '#src/specgen/server';
 import { createToolContext } from '#src/specgen/context';
+import { createSearchDocsTool } from '#src/specgen/tools/search';
 
 const spec = parse(readFileSync('specgen/spec/openapi.yaml', 'utf8'));
 const config = parse(readFileSync('specgen/generator-config.yaml', 'utf8'));
@@ -385,9 +386,15 @@ function longArgumentDescriptions(tools: Served[]): string[] {
   return offenders;
 }
 
+// stdio always serves search-docs, so the gates measure it with the static set.
+const stdioCuratedTools = [
+  ...curatedTools,
+  createSearchDocsTool(async () => ({ status: 200, body: {} as never })),
+];
+
 test('the served tool surface stays within its byte budgets', () => {
   const generated = servedBytes(generatedTools);
-  const curated = servedBytes(curatedTools);
+  const curated = servedBytes(stdioCuratedTools);
   assert.ok(
     generated <= GENERATED_SURFACE_BUDGET_BYTES,
     `generated tools serialize to ${generated} B, budget ${GENERATED_SURFACE_BUDGET_BYTES} B`
@@ -402,7 +409,7 @@ test('no argument description exceeds the per-field cap', () => {
   assert.deepEqual(
     [
       ...longArgumentDescriptions(generatedTools),
-      ...longArgumentDescriptions(curatedTools),
+      ...longArgumentDescriptions(stdioCuratedTools),
     ],
     []
   );
