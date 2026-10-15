@@ -80,13 +80,7 @@ claude mcp add --transport http runpod -s user https://mcp.getrunpod.io/
 
 An OAuth-capable client starts the "Sign in with Runpod" flow automatically on first connect: it opens a browser, you log in to the Runpod console and approve, and the server obtains a Runpod API key scoped to your session. Nothing is stored on disk.
 
-**ChatGPT:** Each ChatGPT connection uses its own `https://chatgpt.com/connector/oauth/<id>` callback. For a connection to the hosted MCP server, the Runpod operator must:
-
-1. Obtain the **full callback URI** for that connection from the ChatGPT setup flow or the `redirect_uri` on its rejected `/authorize` request. Do not share the entire authorization URL; it also contains request parameters.
-2. Add the exact URI to `MCP_ALLOWED_REDIRECT_URIS` on the MCP deployment and `NEXT_PUBLIC_MCP_ALLOWED_REDIRECT_URIS` on the Runpod console deployment. Keep any existing comma-separated entries in both settings.
-3. Redeploy both services, then retry the connection in ChatGPT. The `redirect_uri is not allowed` error should be gone; complete sign-in and verify a read-only MCP tool call.
-
-Do not use a wildcard or a generic ChatGPT URL: the authorization code can be exchanged for a Runpod API key. The hosted server cannot accept an unconfigured ChatGPT connection.
+**ChatGPT:** Add `https://mcp.getrunpod.io/` as a custom MCP server with OAuth in ChatGPT. Each connection registers its exact `https://chatgpt.com/connector/oauth/<id>` callback automatically; no per-connection Runpod environment change is needed. The Runpod operator must deploy the paired backend and console changes and set one `MCP_OAUTH_SIGNING_KEY` on the MCP deployment (`openssl rand -hex 32` creates a suitable value). The signing key must remain stable across deployments, or clients will need to register again. The console returns to the fixed `https://mcp.getrunpod.io/oauth/complete` URL; the MCP server then checks the registered callback and returns the code to ChatGPT.
 
 > **Which account does OAuth pick?** The key is minted for whichever account or team profile your browser's console session has selected when you approve. If you belong to multiple teams, switch to the right profile in the [console](https://console.runpod.io) first (or check afterwards — the resources the tools return are that profile's). To change it later, switch profiles in the console and re-authenticate from your MCP client.
 
