@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { after, before, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 
 import handler, {
   DEFAULT_FLASH_GRAPHQL_TIMEOUT_MS,
@@ -43,12 +43,15 @@ class FakeResponse {
 const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
 const HOSTED_REDIRECT = 'https://claude.ai/api/mcp/auth_callback';
+const CHATGPT_REDIRECT =
+  'https://chatgpt.com/connector/oauth/connection_123-ABC';
 const LOOPBACK_REDIRECT = 'http://127.0.0.1:8765/callback';
 
 const originalGraphqlUrl = process.env.RUNPOD_GRAPHQL_URL;
 const originalConsoleBaseUrl = process.env.CONSOLE_BASE_URL;
 const originalApiKeyName = process.env.RUNPOD_API_KEY_NAME;
 const originalFlashTimeout = process.env.MCP_FLASH_TIMEOUT_MS;
+const originalAllowedRedirectUris = process.env.MCP_ALLOWED_REDIRECT_URIS;
 
 let backend: http.Server;
 let backendRequests: string[] = [];
@@ -166,6 +169,74 @@ async function token(codeVerifier?: string) {
   }
   return request('POST', '/token', params.toString());
 }
+
+describe('ChatGPT callback validation', () => {
+  beforeEach(() => {
+    process.env.MCP_ALLOWED_REDIRECT_URIS = CHATGPT_REDIRECT;
+  });
+
+  afterEach(() => {
+    if (originalAllowedRedirectUris === undefined)
+      delete process.env.MCP_ALLOWED_REDIRECT_URIS;
+    else process.env.MCP_ALLOWED_REDIRECT_URIS = originalAllowedRedirectUris;
+  });
+
+  it('accepts a connection-specific ChatGPT callback at authorization', async () => {
+    const res = await authorize(CHATGPT_REDIRECT);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body?.error_description, 'code_challenge is required.');
+    assert.equal(backendRequests.length, 0);
+  });
+
+  it('accepts the same callback at token exchange', async () => {
+    const params = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: 'code-1',
+      redirect_uri: CHATGPT_REDIRECT,
+      code_verifier: VERIFIER,
+    });
+    const res = await request('POST', '/token', params.toString());
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.access_token, 'rp_test_secret');
+  });
+
+  it('rejects an unconfigured ChatGPT connection', async () => {
+    delete process.env.MCP_ALLOWED_REDIRECT_URIS;
+    const res = await authorize(CHATGPT_REDIRECT);
+    assert.equal(res.statusCode, 400);
+    assert.match(
+      String(res.body?.error_description),
+      /redirect_uri is not allowed/
+    );
+    assert.equal(backendRequests.length, 0);
+  });
+
+  it('rejects ChatGPT lookalikes before touching the backend', async () => {
+    const invalid = [
+      'https://chatgpt.com/connector/oauth/other-connection',
+      'http://chatgpt.com/connector/oauth/connection_123-ABC',
+      'https://chatgpt.com.evil.test/connector/oauth/connection_123-ABC',
+      'https://chatgpt.com@evil.test/connector/oauth/connection_123-ABC',
+      'https://chatgpt.com:443/connector/oauth/connection_123-ABC',
+      'https://chatgpt.com/connector/oauth/',
+      `${CHATGPT_REDIRECT}/extra`,
+      `${CHATGPT_REDIRECT}/`,
+      `${CHATGPT_REDIRECT}?next=https://evil.test`,
+      `${CHATGPT_REDIRECT}#fragment`,
+      'https://chatgpt.com/connector/oauth/%63onnection_123-ABC',
+    ];
+    for (const redirectUri of invalid) {
+      const res = await authorize(redirectUri);
+      assert.equal(res.statusCode, 400, redirectUri);
+      assert.equal(
+        res.body?.error_description,
+        'redirect_uri is not allowed. It must be a registered client callback or a loopback address.',
+        redirectUri
+      );
+    }
+    assert.equal(backendRequests.length, 0);
+  });
+});
 
 describe('OAuth PKCE endpoints', () => {
   it('rejects missing PKCE for both hosted and loopback redirects', async () => {
