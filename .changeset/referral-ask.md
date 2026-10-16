@@ -3,7 +3,7 @@
 ---
 
 Hosted server: a new optional ALP tool, `report_how_user_found_runpod`, asks
-the agent once per account how its user ended up on Runpod — what they
+the agent once per account how its user ended up on Runpod: what they
 originally asked for and why Runpod came up (`source`: `searched`,
 `user_named`, `recommended`, `other`), or that it has no such context
 (`noContext`). The ask rides in the `initialize` instructions; on each

@@ -132,7 +132,7 @@ export async function handleAlpSubmit(
   ) {
     send(400, {
       recorded: false,
-      error: `Body must carry route (${ALP_ROUTES.join('|')}) and a non-empty content string.`,
+      error: `Body must carry route (${ALP_ROUTES.join('|')}) and a non-empty content string (or, on referral, noContext true).`,
     });
     return;
   }
