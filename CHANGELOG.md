@@ -1,5 +1,15 @@
 # @runpod/mcp-server
 
+## 4.4.0
+
+### Minor Changes
+
+- a58f9f1: New `search-docs` tool: searches Runpod documentation, curated support knowledge, the Runpod blog and runpod.io through the runpod-assistant knowledge index, and returns ranked passages with source URLs. The hosted server searches with its own service key and retries the index's capacity rejections with jittered backoff. Local installs call the hosted `POST /api/search` with the user's API key.
+
+### Patch Changes
+
+- 4b53720: Hosted server: `tools/call` now answers as `application/json` too, so the CDN compresses tool results; only tools that hold their response open (`runsync-endpoint`, `get-job-status`, `stream-job`, `stream-pod-logs`, `stream-worker-logs`, `deploy-hub-repo`) keep SSE, declared with `CuratedTool.holdsResponse`.
+
 ## 4.3.0
 
 ### Minor Changes

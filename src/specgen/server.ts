@@ -40,6 +40,8 @@ import {
   recordedArgumentValues,
 } from './analytics.js';
 import { createAlpTools, type AlpToolsOptions } from './tools/alp.js';
+import { createSearchDocsTool } from './tools/search.js';
+import type { SearchFn } from '../search/knowledge.js';
 import {
   callerId,
   logToolCall,
@@ -73,6 +75,13 @@ export const curatedTools: CuratedTool[] = [
 // This block is the maintained EXCERPT of the answer contract; the canonical
 // full text lives in the plugin's runpod-mcp skill, served here as the
 // runpod-mcp guide from @runpod/plugin-knowledge.
+// Tools whose handler may hold the response longer than a client's request
+// timeout; the hosted transport answers these over SSE and everything else as
+// JSON (src/http.ts). ALP tools answer immediately and are not included.
+export const responseHoldingTools: ReadonlySet<string> = new Set(
+  curatedTools.filter((tool) => tool.holdsResponse).map((tool) => tool.name)
+);
+
 export const SERVER_INSTRUCTIONS = `These tools cover the Runpod v2 REST surface: compute catalog (GPUs, CPUs, data centers, capacity), pods, serverless endpoints and jobs, templates, network volumes, container registries, billing, public endpoints, and the Hub.
 
 Answer from live reads, as facts. Account and availability questions can only be answered from tool data: call the relevant list-/get- tool and quote the figures, names, and ids it returns verbatim. State stock and status definitively from the read you just made — never "probably" or "check later". When the user names a resource loosely ("my comfyui pod"), resolve it with a list- tool; ask only on genuine ambiguity. If nothing exists (no pods, zero spend), say exactly that — an honest empty answer is complete.
@@ -137,6 +146,9 @@ export interface SpecgenServerOptions {
    *  (src/alp/answered.ts). The tool itself is served either way —
    *  tools/list is a separate request. */
   promptReferral?: boolean;
+  /** Backs search-docs (src/specgen/tools/search.ts). When absent, the tool
+   *  is not listed. */
+  search?: SearchFn;
 }
 
 export function createSpecgenServer(
@@ -146,15 +158,14 @@ export function createSpecgenServer(
 ): Server {
   const rateLimiter = opts.rateLimiter ?? noopRateLimiter;
   const caller = callerId(ctx.apiKey);
-  // The served curated set: the static surface, the config-gated ALP write
-  // tools, and describe-tool over all of it. Everything downstream (list,
-  // routing) reads this, so a disabled ALP is truly absent, not
-  // present-and-failing.
-  const configuredCuratedTools = opts.alp
-    ? [...curatedTools, ...createAlpTools(opts.alp)]
-    : curatedTools;
+  // The served curated set: the static surface, the config-gated search-docs
+  // and ALP write tools, and describe-tool over all of it. Everything
+  // downstream (list, routing) reads this, so a disabled tool is truly absent,
+  // not present-and-failing.
   const servedCuratedTools: CuratedTool[] = [
-    ...configuredCuratedTools,
+    ...curatedTools,
+    ...(opts.search ? [createSearchDocsTool(opts.search)] : []),
+    ...(opts.alp ? createAlpTools(opts.alp) : []),
     createDescribeTool(() => [...servedCuratedTools, ...generatedTools]),
   ];
   const callShapeOnlyTools = new Set(

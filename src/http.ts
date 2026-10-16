@@ -6,7 +6,7 @@ import {
   type JSONRPCMessage,
 } from '@modelcontextprotocol/sdk/types.js';
 import { hasAnswered } from './alp/answered.js';
-import { createSpecgenServer } from './specgen/server.js';
+import { createSpecgenServer, responseHoldingTools } from './specgen/server.js';
 import { createToolContext as createSpecgenContext } from './specgen/context.js';
 import { callerId } from './specgen/ops.js';
 import { analyticsCallerId, captureLoopBlocked } from './specgen/analytics.js';
@@ -15,6 +15,7 @@ import {
   notFoundSinkUrl,
 } from './specgen/not-found-limiter.js';
 import { SERVER_VERSION } from './server.js';
+import { searchConfigured, searchKnowledge } from './search/knowledge.js';
 import { sanitizeUaToken } from './_shared/tracking.js';
 import {
   createCredentialChecker,
@@ -33,7 +34,7 @@ import { IncomingMessage, ServerResponse } from 'node:http';
  * Extract the bearer token from an HTTP request's Authorization header.
  * Returns null if the header is missing or malformed.
  */
-function extractBearerToken(req: IncomingMessage): string | null {
+export function extractBearerToken(req: IncomingMessage): string | null {
   const authHeader = req.headers.authorization;
   if (!authHeader) return null;
   const parts = authHeader.split(' ');
@@ -284,8 +285,10 @@ function earlyCredentialCheckSkip(req: IncomingMessage): SkipReason | null {
   return null;
 }
 
-const isToolCall = (message: JSONRPCMessage): boolean =>
-  CallToolRequestSchema.safeParse(message).success;
+const callsResponseHoldingTool = (message: JSONRPCMessage): boolean => {
+  const call = CallToolRequestSchema.safeParse(message);
+  return call.success && responseHoldingTools.has(call.data.params.name);
+};
 
 // The instructions are delivered on `initialize` and nowhere else, so that is
 // the one request where it matters whether the account has already answered
@@ -293,14 +296,13 @@ const isToolCall = (message: JSONRPCMessage): boolean =>
 const isInitialize = (message: JSONRPCMessage): boolean =>
   InitializeRequestSchema.safeParse(message).success;
 
-// The CDN compresses application/json but never text/event-stream, and tools/list
-// (~65 KB raw, ~13 KB gzipped) is sent on every client handshake. tools/call stays
-// on SSE: clients read an SSE body under their long stream timeout but a JSON body
-// under the short request timeout (30s in the Python SDK), and get-job-status /
-// runsync-endpoint legitimately hold a response longer than that. No parsed
-// messages keeps SSE, the SDK's default.
+// The CDN compresses application/json but never text/event-stream, so every
+// request answers as JSON except a call to a tool that holds its response open
+// (CuratedTool.holdsResponse): clients read an SSE body under their long stream
+// timeout but a JSON body under the short request timeout (30s in the Python
+// SDK). No parsed messages keeps SSE, the SDK's default.
 export function prefersJsonResponse(messages: JSONRPCMessage[]): boolean {
-  return messages.length > 0 && !messages.some(isToolCall);
+  return messages.length > 0 && !messages.some(callsResponseHoldingTool);
 }
 
 const DEFAULT_REQUEST_LOG_SAMPLE_RATE = 0.1;
@@ -614,6 +616,11 @@ export async function handleMcpRequest(
             },
             promptReferral,
           }
+        : {}),
+      // search-docs: listed only where the deployment holds the assistant's
+      // service key; the search runs in-process with it.
+      ...(searchConfigured()
+        ? { search: (request) => searchKnowledge(request) }
         : {}),
       ...(notFoundLimiter
         ? {
