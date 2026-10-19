@@ -21,23 +21,21 @@ import { defaultCredentialChecker } from '../http.js';
 import { scrubSubmission, SCRUB_VERSION } from './scrub.js';
 import {
   ALP_REFERRAL_SOURCES,
+  ALP_REFERRAL_USE_CASES,
+  ALP_ROUTES,
+  type AlpRoute,
   ALREADY_SUBMITTED_NOTE,
   isSinkUrl,
   type AlpReferralSource,
+  type AlpReferralUseCase,
 } from './sink.js';
 
-export const ALP_ROUTES = [
-  'feedback',
-  'journal',
-  'question',
-  'referral',
-] as const;
-export type AlpRoute = (typeof ALP_ROUTES)[number];
+export { ALP_ROUTES, type AlpRoute } from './sink.js';
 
 const MAX_CONTENT_CHARS = 20_000;
-// The referral answer is a sentence or two by contract (CON-1762: never a
-// conversation log), so it gets a cap a log cannot fit in.
-export const MAX_REFERRAL_CONTENT_CHARS = 2_000;
+// The referral note is a short generic description in the agent's own words,
+// never the user's (CON-1762), so it gets a cap only a phrase fits in.
+export const MAX_REFERRAL_CONTENT_CHARS = 200;
 const MAX_FIELD_CHARS = 500;
 const SINK_TIMEOUT_MS = 5_000;
 
@@ -59,6 +57,8 @@ export interface AlpSubmitBody {
   trigger?: string;
   /** Referral route: why Runpod came up. Constrained so it stays countable. */
   source?: AlpReferralSource;
+  /** Referral route: the kind of work that brought the user to Runpod. */
+  useCase?: AlpReferralUseCase;
   /** Referral route: the agent had no context on how the user found Runpod. */
   noContext?: boolean;
   harness?: string;
@@ -113,10 +113,10 @@ export async function handleAlpSubmit(
   ) as Partial<AlpSubmitBody>;
   const content = typeof body.content === 'string' ? body.content : '';
   const referral = body.route === 'referral';
-  // Referral route only: a no-context answer is complete without content. The
-  // tool asks for a few words with it, but a terse agent may send noContext
-  // alone, and a 400 there would leave the account's one slot open and the
-  // ask repeating every session. The flag is normalized leniently (true, 1,
+  // Referral route only: content is an optional note, so an answer with a
+  // use case, or a no-context answer, is complete without it. A 400 there
+  // would leave the account's one slot open and the ask repeating every
+  // session. The flag is normalized leniently (true, 1,
   // any casing of "true") because the first answer closes the slot and a
   // sloppy no-context call must not be stored as a real one.
   const rawNoContext = body.noContext as unknown;
@@ -126,13 +126,19 @@ export async function handleAlpSubmit(
       rawNoContext === 1 ||
       (typeof rawNoContext === 'string' &&
         rawNoContext.trim().toLowerCase() === 'true'));
+  const useCase =
+    referral &&
+    !noContextAnswer &&
+    ALP_REFERRAL_USE_CASES.includes(body.useCase as AlpReferralUseCase)
+      ? (body.useCase as AlpReferralUseCase)
+      : undefined;
   if (
     !ALP_ROUTES.includes(body.route as AlpRoute) ||
-    (content.trim().length === 0 && !noContextAnswer)
+    (content.trim().length === 0 && !noContextAnswer && !useCase)
   ) {
     send(400, {
       recorded: false,
-      error: `Body must carry route (${ALP_ROUTES.join('|')}) and a non-empty content string (or, on referral, noContext true).`,
+      error: `Body must carry route (${ALP_ROUTES.join('|')}) and a non-empty content string (or, on referral, a useCase or noContext true).`,
     });
     return;
   }
@@ -177,7 +183,7 @@ export async function handleAlpSubmit(
     content,
     // Feedback/journal/question fields are not stored on the referral route
     // even if a client sends them: the tool does not offer them, and the
-    // route's 2,000-character cap would mean nothing if a transcript could
+    // route's 200-character cap would mean nothing if a transcript could
     // ride in `trigger` or `workaround` under the general cap instead.
     intention:
       !referral && typeof body.intention === 'string'
@@ -210,6 +216,7 @@ export async function handleAlpSubmit(
         ? (body.source as AlpReferralSource)
         : undefined,
     noContext: referral ? noContextAnswer : undefined,
+    useCase,
     harness: typeof body.harness === 'string' ? body.harness : undefined,
     harnessSource:
       typeof body.harnessSource === 'string' ? body.harnessSource : undefined,
@@ -237,6 +244,7 @@ export async function handleAlpSubmit(
     trigger: clean.trigger?.slice(0, MAX_CONTENT_CHARS),
     source: clean.source,
     noContext: clean.noContext,
+    useCase: clean.useCase,
     harness: clean.harness?.slice(0, MAX_FIELD_CHARS),
     harnessSource: clean.harnessSource?.slice(0, MAX_FIELD_CHARS),
     transport: clean.transport?.slice(0, MAX_FIELD_CHARS),

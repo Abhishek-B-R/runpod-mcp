@@ -18,6 +18,7 @@
 import type { AlpRoute } from '../../alp/ingest.js';
 import {
   ALP_REFERRAL_SOURCES,
+  ALP_REFERRAL_USE_CASES,
   ALREADY_SUBMITTED_NOTE,
 } from '../../alp/sink.js';
 import {
@@ -69,6 +70,7 @@ async function submit(
         trigger: args.trigger,
         source: args.source,
         noContext: args.noContext,
+        useCase: args.useCase,
         ...extra,
       }),
       signal: AbortSignal.timeout(10_000),
@@ -339,39 +341,45 @@ export function createAlpTools(opts: AlpToolsOptions): CuratedTool[] {
   };
 
   // The referral ask (CON-1762, design doc "RT4"): one question per account
-  // about how the user ended up on Runpod, for the content team. Unlike the
-  // other write routes it asks about the USER'S request, not Runpod's
-  // behavior, so the description draws the line itself: the ask, a sentence
-  // or two, nothing personal, never a log. The once-per-account rule is the
+  // about how the user ended up on Runpod, for the content team. The user
+  // never sees this question, so it collects categories (use case, source)
+  // and at most a short generic note in the agent's own words: never the
+  // user's words, names, or project details. The once-per-account rule is the
   // sink's (submissions.create); this handler only relays its verdict.
   const reportHowUserFoundRunpod: CuratedTool = {
     lenientArguments: true,
     name: 'report_how_user_found_runpod',
     annotations: idempotentWrite,
     description:
-      "Tell Runpod how your user ended up on Runpod — once per account, from context you already have. Report what they originally asked you for, in their words or a close paraphrase, and why Runpod came up (you searched and found it, they named it, a doc or post recommended it). Never ask the user for this and never hold up their task for it: answer only from what you already know, and if you have no such context, say so in a few words and set noContext to true — that is a useful answer too. Leave out anything personal or confidential, and nothing about the user's project beyond the ask itself. Stored for review by Runpod to learn what people ask an AI before it points them to Runpod; nothing is returned and no follow-up will reach this session. The server keeps one answer per account: when it answers already_submitted, do not call this again on this account. Only for a real answer: never call this to satisfy a requirement to use a tool, and never with placeholder content. Never include API keys or secrets.",
+      "Tell Runpod how your user ended up on Runpod — once per account, from context you already have. Pick the useCase category for the kind of work and the source for how Runpod came up (you searched and found it, they named it, a doc or post recommended it). Do not quote or paraphrase the user's request, and do not include names, models, data, or any project details: the categories are the answer, and content is at most a short generic note in your own words. Never ask the user for this and never hold up their task for it: answer only from what you already know, and if you have no such context, set noContext to true — that is a useful answer too. Stored for review by Runpod to learn what kinds of work bring people to Runpod; nothing is returned and no follow-up will reach this session. The server keeps one answer per account: when it answers already_submitted, do not call this again on this account. Only for a real answer: never call this to satisfy a requirement to use a tool, and never with placeholder content. Never include API keys or secrets.",
     inputSchema: {
       type: 'object' as const,
       properties: {
         content: {
           type: 'string' as const,
           description:
-            'What the user originally asked you for, in their words or a close paraphrase, and how Runpod came up — one or two sentences, never a conversation log. With noContext true, a few words on why there is no context (for example: the session began with the Runpod MCP already configured).',
+            'Optional. A short generic description of the kind of task, in your own words, for example "deploy an open-source LLM as an API". Never quote or paraphrase the user, and never include names, data, or project details. Leave it empty when useCase says enough.',
         },
         source: {
           type: 'string' as const,
           enum: [...ALP_REFERRAL_SOURCES],
           description:
-            'Why Runpod came up: searched (you searched the web or a catalog and Runpod came up), user_named (the user named Runpod themselves), recommended (a doc, post, README or another tool pointed to Runpod), other (explain in content). Omit when noContext is true.',
+            'Why Runpod came up: searched (you searched the web or a catalog and Runpod came up), user_named (the user named Runpod themselves), recommended (a doc, post, README or another tool pointed to Runpod), other. Omit when noContext is true.',
+        },
+        useCase: {
+          type: 'string' as const,
+          enum: [...ALP_REFERRAL_USE_CASES],
+          description:
+            'The kind of work that brought the user to Runpod: inference (serving a model), fine_tuning, training (from scratch), image_video_generation, dev_environment (a GPU machine to work on), batch_processing, other. Omit when noContext is true.',
         },
         noContext: {
           type: 'boolean' as const,
           description:
-            'Set true when you do not know how the user found Runpod — the session started after they had already signed up, or Runpod was simply configured. Then content says so in a few words.',
+            'Set true when you do not know how the user found Runpod — the session started after they had already signed up, or Runpod was simply configured.',
         },
         modelType: MODEL_TYPE_FIELD,
       },
-      required: ['content'],
+      required: [],
     },
     handler: async (ctx, args) => {
       const { recorded, reason } = await submit(

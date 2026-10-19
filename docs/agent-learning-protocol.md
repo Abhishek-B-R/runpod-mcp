@@ -161,24 +161,30 @@ The referral ask ([CON-1762](https://linear.app/runpod/issue/CON-1762)), added
 written so AI assistants cite it) needs to know what people asked an AI before
 it pointed them to Runpod, and no AEO tool exposes that; when an agent
 found Runpod in the same session, the agent has exactly that context. So the
-server asks the agent, once per account: what the user originally asked for,
-in their words or a close paraphrase, and why Runpod came up.
+server asks the agent, once per account: what kind of work brought the user
+to Runpod, and why Runpod came up.
 
-This is the one route that asks about the **user's request** rather than
-Runpod's behavior, so the privacy line is drawn in the tool text itself: the
-ask, a sentence or two, nothing personal or confidential, nothing about the
-project beyond the ask. Structurally, `content` on this route is capped at
-2,000 characters (`MAX_REFERRAL_CONTENT_CHARS`) — an order of magnitude under
-the general cap — so a conversation log cannot fit, and it goes through the
-same scrub as every other submission. Expect most answers to be "no context":
+This is the one route that concerns the **user's request** rather than
+Runpod's behavior, and the user never sees the question, so it collects
+categories, never the user's words. The tool text tells the agent not to
+quote or paraphrase the request and not to include names, models, data, or
+project details. `content` is an optional short generic note in the agent's
+own words, capped at 200 characters (`MAX_REFERRAL_CONTENT_CHARS`), and goes
+through the same scrub as every other submission. The trade-off is that the
+readout shows what kinds of work bring people to Runpod, not the exact
+phrasing they used. Expect most answers to be "no context":
 agent sessions usually start after the user signed up on the web. Those are
 recorded too, as `noContext: true`, because the share of answers with real
 context is the readout's first number.
 
-Fields beyond the shared ones: `source` (why Runpod came up: `searched`,
-`user_named`, `recommended`, `other`; off-enum values are dropped like
-`severity`) and `noContext` (always a boolean on this route, absent on the
-others). `intention` is not asked — it is a feedback/journal field.
+Fields beyond the shared ones: `useCase` (the kind of work: `inference`,
+`fine_tuning`, `training`, `image_video_generation`, `dev_environment`,
+`batch_processing`, `other`), `source` (why Runpod came up: `searched`,
+`user_named`, `recommended`, `other`), and `noContext` (always a boolean on
+this route, absent on the others). Off-enum `useCase` and `source` values are
+dropped like `severity`. A valid `useCase` or `noContext: true` is a complete
+answer without `content`. `intention` is not asked — it is a feedback/journal
+field.
 
 #### Once per account, in two places
 
@@ -352,6 +358,7 @@ for them costs tokens to get a worse, inconsistent value.
 | `transport`         | tool context    | `stdio` or `http`                                                                                                                 |
 | `source`            | tool arg        | RT4 only: why Runpod came up (`searched`, `user_named`, `recommended`, `other`). Off-enum values are dropped.                     |
 | `noContext`         | tool arg        | RT4 only: the agent had no context on how the user found Runpod. Always a boolean on that route, absent elsewhere.                |
+| `useCase`           | tool arg        | RT4 only: the kind of work that brought the user to Runpod. Enum; off-enum values are dropped.                                    |
 
 Two agent-supplied fields plus one self-report. Fewer required args means a
 higher call-through rate.

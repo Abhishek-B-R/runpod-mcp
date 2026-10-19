@@ -44,15 +44,17 @@ test('ALP sink routes reject invalid JSON shapes before accessing storage', asyn
   }
 });
 
-// Convex cannot import the server's route lists, so each has a hand-built
-// validator twin. A route added to one side and missed on the other would
-// only surface at deploy time, as a soft "prompt kept".
+// The Convex validators are built from the shared route lists
+// (src/alp/sink.ts); this pins that wiring.
 test('Convex route validators match the server route lists', () => {
   assert.deepEqual(
     routeValidator.members.map((member) => member.value),
     [...ALP_ROUTES]
   );
-  assert.deepEqual([oncePerAccountRoute.value], [...ONCE_PER_ACCOUNT_ROUTES]);
+  assert.deepEqual(
+    oncePerAccountRoute.members.map((member) => member.value),
+    [...ONCE_PER_ACCOUNT_ROUTES]
+  );
   for (const route of ONCE_PER_ACCOUNT_ROUTES)
     assert.ok(ALP_ROUTES.includes(route), route);
 });

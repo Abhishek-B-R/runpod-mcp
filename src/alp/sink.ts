@@ -3,6 +3,15 @@
 // imports nothing, so anything can import it without a cycle; the ingest
 // handler cannot play that role because it imports src/http.ts.
 
+// Every ALP route. The Convex validators are built from this list.
+export const ALP_ROUTES = [
+  'feedback',
+  'journal',
+  'question',
+  'referral',
+] as const;
+export type AlpRoute = (typeof ALP_ROUTES)[number];
+
 // Routes that take ONE answer per account, ever (design doc, "RT4"). The
 // Convex mutation dedupes on this list and /alp/answered validates against it.
 // The next one (the agent NPS score, CON-1729) is a literal added here, in the
@@ -32,6 +41,19 @@ export const ALP_REFERRAL_SOURCES = [
   'other',
 ] as const;
 export type AlpReferralSource = (typeof ALP_REFERRAL_SOURCES)[number];
+
+// Referral route: the kind of work that brought the user to Runpod. A
+// category instead of the user's words, so nothing they typed is stored.
+export const ALP_REFERRAL_USE_CASES = [
+  'inference',
+  'fine_tuning',
+  'training',
+  'image_video_generation',
+  'dev_environment',
+  'batch_processing',
+  'other',
+] as const;
+export type AlpReferralUseCase = (typeof ALP_REFERRAL_USE_CASES)[number];
 
 /** The sink is a Convex HTTP action, always. Anything else is a typo. */
 export function isSinkUrl(value: string): boolean {

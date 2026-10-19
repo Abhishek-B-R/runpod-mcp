@@ -1,15 +1,18 @@
 import { scrubSubmission } from '../src/alp/scrub';
-import { isOncePerAccountRoute } from '../src/alp/sink';
+import {
+  isOncePerAccountRoute,
+  ONCE_PER_ACCOUNT_ROUTES,
+} from '../src/alp/sink';
 import { routeValidator } from './schema';
 import { internalMutation, internalQuery } from './_generated/server';
 
 export const MAX_JOURNAL_READ = 50;
 import { v } from 'convex/values';
 
-// Validator twin of ONCE_PER_ACCOUNT_ROUTES (src/alp/sink.ts), which is what
-// the dedupe below and /alp/answered branch on. Convex validators are built by
-// hand, so a new once-per-account route is a literal in both places.
-export const oncePerAccountRoute = v.literal('referral');
+// Built from ONCE_PER_ACCOUNT_ROUTES (src/alp/sink.ts).
+export const oncePerAccountRoute = v.union(
+  ...ONCE_PER_ACCOUNT_ROUTES.map((r) => v.literal(r))
+);
 
 export const create = internalMutation({
   args: {
@@ -23,6 +26,7 @@ export const create = internalMutation({
     trigger: v.optional(v.string()),
     source: v.optional(v.string()),
     noContext: v.optional(v.boolean()),
+    useCase: v.optional(v.string()),
     identity: v.string(),
     harness: v.optional(v.string()),
     harnessSource: v.optional(v.string()),

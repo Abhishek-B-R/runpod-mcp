@@ -12,6 +12,7 @@ import { createAlpTools } from '#src/specgen/tools/alp';
 import { handleAlpSubmit } from '#src/alp/ingest';
 import {
   ALP_REFERRAL_SOURCES,
+  ALP_REFERRAL_USE_CASES,
   ALREADY_SUBMITTED_NOTE,
   isSinkUrl,
 } from '#src/alp/sink';
@@ -77,14 +78,18 @@ test('configured means present: the five ALP tools appear, with honest wording',
   const read = tools.find((t) => t.name === 'read_journal')!;
   assert.match(read.description ?? '', /cannot read any other account/);
   assert.deepEqual(Object.keys(read.inputSchema.properties ?? {}), ['limit']);
-  // The referral ask is about the USER'S request, the one route that is, so
-  // its description has to draw the privacy line and the once-only rule itself.
+  // The user never sees the referral ask, so its description has to draw the
+  // privacy line (categories, never the user's words) and the once-only rule.
   const referral = tools.find(
     (t) => t.name === 'report_how_user_found_runpod'
   )!;
   assert.match(referral.description ?? '', /once per account/);
   assert.match(referral.description ?? '', /Never ask the user/);
-  assert.match(referral.description ?? '', /personal or confidential/);
+  assert.match(
+    referral.description ?? '',
+    /Do not quote or paraphrase the user's request/
+  );
+  assert.doesNotMatch(referral.description ?? '', /in their words/);
   assert.match(referral.description ?? '', /already_submitted/);
   assert.match(referral.description ?? '', /nothing is returned/);
   await client.close();
@@ -694,10 +699,11 @@ test('modelType asks for a best guess and stays optional', async () => {
       /if you know it/,
       name
     );
+    // The referral note is optional: the categories are the answer.
     assert.deepEqual(
-      schema.required,
-      ['content'],
-      `${name} must keep content the only required arg`
+      schema.required ?? [],
+      name === 'report_how_user_found_runpod' ? [] : ['content'],
+      `${name} required args`
     );
   }
   await client.close();
@@ -970,7 +976,7 @@ test('scrub catches Hugging Face tokens and URL query secrets idempotently', () 
 
 // ---- the referral ask (RT4) ----
 
-test('the referral tool serves the shared source enum and keeps content the only required arg', async () => {
+test('the referral tool serves the shared source and use-case enums and requires nothing', async () => {
   const client = await connect({
     alp: { ingestUrl: 'https://ingest.invalid/x', transport: 'http' },
   });
@@ -981,8 +987,9 @@ test('the referral tool serves the shared source enum and keeps content the only
     required?: string[];
   };
   assert.deepEqual(schema.properties.source.enum, [...ALP_REFERRAL_SOURCES]);
+  assert.deepEqual(schema.properties.useCase.enum, [...ALP_REFERRAL_USE_CASES]);
   assert.equal(schema.properties.noContext.type, 'boolean');
-  assert.deepEqual(schema.required, ['content']);
+  assert.deepEqual(schema.required ?? [], []);
   assert.equal(
     schema.properties.intention,
     undefined,
@@ -991,7 +998,7 @@ test('the referral tool serves the shared source enum and keeps content the only
   await client.close();
 });
 
-test('the referral submission carries source and noContext under route referral', async () => {
+test('the referral submission carries source, useCase and noContext under route referral', async () => {
   const seen: Array<Record<string, unknown>> = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (_i: RequestInfo | URL, init?: RequestInit) => {
@@ -1008,9 +1015,9 @@ test('the referral submission carries source and noContext under route referral'
     const result = await tool.handler(
       createToolContext({ apiKey: 'rpa_test' }),
       {
-        content:
-          'They asked for a cheap A100 to fine-tune a 7B model; I searched and Runpod came up.',
+        content: 'fine-tune an open-source LLM',
         source: 'searched',
+        useCase: 'fine_tuning',
         noContext: false,
       }
     );
@@ -1023,6 +1030,7 @@ test('the referral submission carries source and noContext under route referral'
   assert.equal(seen.length, 1);
   assert.equal(seen[0].route, 'referral');
   assert.equal(seen[0].source, 'searched');
+  assert.equal(seen[0].useCase, 'fine_tuning');
   assert.equal(seen[0].noContext, false);
   assert.equal(seen[0].intention, undefined, 'no intention on this route');
 });
@@ -1160,6 +1168,66 @@ test('a no-context referral answer is accepted without content', async () => {
   assert.equal(bad.written.statusCode, 400);
 });
 
+// The categories are the answer, so a use case alone is a complete answer.
+// Like source, useCase stays on its enum and is dropped on a no-context
+// answer, which by definition has no use case.
+test('ingest accepts a use case without content, keeps it on the enum, and drops it on no-context', async () => {
+  const seen: Array<Record<string, unknown>> = [];
+  const sinkFetch = (async (_u: RequestInfo | URL, init?: RequestInit) => {
+    seen.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return new Response('{"ok":true,"id":"row","duplicate":false}');
+  }) as typeof fetch;
+  const cases: Array<Record<string, unknown>> = [
+    { route: 'referral', useCase: 'inference', source: 'searched' },
+    { route: 'referral', content: 'c', useCase: 'llm_chatbot' },
+    { route: 'referral', useCase: 'training', noContext: true },
+  ];
+  for (const body of cases) {
+    const { req, res, written } = fakeReqRes(
+      { authorization: 'Bearer rpa_live' },
+      body
+    );
+    await handleAlpSubmit(req, res, {
+      verify: async () => ({ status: 'valid', accountId: 'user_42' }),
+      sinkFetch,
+      env: READ_ENV,
+    });
+    assert.equal(JSON.parse(written.body!).recorded, true);
+  }
+  assert.deepEqual(
+    seen.map((r) => r.useCase),
+    ['inference', undefined, undefined]
+  );
+  assert.equal(seen[0].content, '');
+  // An off-enum use case does not make an empty answer complete.
+  const bad = fakeReqRes(
+    { authorization: 'Bearer rpa_live' },
+    { route: 'referral', useCase: 'llm_chatbot' }
+  );
+  await handleAlpSubmit(bad.req, bad.res, {
+    verify: async () => ({ status: 'valid', accountId: 'user_42' }),
+    env: READ_ENV,
+  });
+  assert.equal(bad.written.statusCode, 400);
+});
+
+test('useCase stays off the other routes even when sent', async () => {
+  let stored: Record<string, unknown> = {};
+  const { req, res } = fakeReqRes(
+    { authorization: 'Bearer rpa_live' },
+    { route: 'feedback', content: 'c', useCase: 'inference' }
+  );
+  await handleAlpSubmit(req, res, {
+    verify: async () => ({ status: 'valid', accountId: 'user_42' }),
+    sinkFetch: (async (_u: RequestInfo | URL, init?: RequestInit) => {
+      stored = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response('{"ok":true,"id":"row"}');
+    }) as typeof fetch,
+    env: READ_ENV,
+  });
+  assert.equal(stored.useCase, undefined);
+});
+
 // The cap on this route is the whole data-minimization story, so nothing that
 // carries the general cap may ride along: the feedback/journal fields are
 // dropped on referral even though the tool is lenient about unknown keys.
@@ -1222,8 +1290,8 @@ test('source and noContext stay off the other routes even when sent', async () =
   assert.equal(stored.source, undefined);
 });
 
-// "Do not collect full conversation logs" (CON-1762) is structural: the cap
-// is a sentence or two, an order of magnitude under the general one.
+// The note is a short generic phrase in the agent's own words, so the cap is
+// two orders of magnitude under the general one.
 test('referral content is capped well below the general content cap', async () => {
   const long = 'x'.repeat(MAX_REFERRAL_CONTENT_CHARS + 500);
   const lengths: Record<string, number> = {};
@@ -1293,6 +1361,8 @@ test('the referral prompt is in the instructions by default and gone once the ac
   assert.match(askedText, /report_how_user_found_runpod/);
   assert.match(askedText, /never ask the user/);
   assert.match(askedText, /noContext true/);
+  assert.match(askedText, /Do not quote or paraphrase the user's request/);
+  assert.doesNotMatch(askedText, /in their words/);
   await asked.close();
 
   const answered = await connect({

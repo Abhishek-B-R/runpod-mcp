@@ -49,6 +49,7 @@ http.route({
       source: typeof body.source === 'string' ? body.source : undefined,
       noContext:
         typeof body.noContext === 'boolean' ? body.noContext : undefined,
+      useCase: typeof body.useCase === 'string' ? body.useCase : undefined,
       identity: String(body.identity ?? ''),
       harness: typeof body.harness === 'string' ? body.harness : undefined,
       harnessSource:

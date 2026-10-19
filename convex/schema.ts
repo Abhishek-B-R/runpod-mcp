@@ -1,15 +1,9 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { ALP_ROUTES } from '../src/alp/sink';
 
-// The one Convex-side list of routes; the write mutation reuses it. Mirrors
-// ALP_ROUTES in src/alp/ingest.ts, which Convex cannot import (it pulls in
-// src/http.ts) and which could not produce v.literal validators anyway.
-export const routeValidator = v.union(
-  v.literal('feedback'),
-  v.literal('journal'),
-  v.literal('question'),
-  v.literal('referral')
-);
+// Built from the shared route list (src/alp/sink.ts).
+export const routeValidator = v.union(...ALP_ROUTES.map((r) => v.literal(r)));
 
 // One table, one drain per route (design doc: docs/agent-learning-protocol.md in
 // runpod-mcp). Fields the later phases need are reserved now so P1-P3 are
@@ -27,10 +21,11 @@ export default defineSchema({
     tool: v.optional(v.string()),
     workaround: v.optional(v.string()),
     trigger: v.optional(v.string()),
-    // Referral route (CON-1762): why Runpod came up, and whether the agent
-    // had any context at all. Optional here so every older row validates.
+    // Referral route (CON-1762): why Runpod came up, the kind of work, and
+    // whether the agent had any context at all. Optional here so every older row validates.
     source: v.optional(v.string()),
     noContext: v.optional(v.boolean()),
+    useCase: v.optional(v.string()),
     // The resolved Runpod identity — never an API key or a hash of one.
     identity: v.string(),
     harness: v.optional(v.string()),
