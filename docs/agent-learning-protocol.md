@@ -217,12 +217,14 @@ that fires from the success response of an account's third resource creation
 and is also once per account, enforced in Convex on the same identity. It
 should reuse this machinery rather than add a second copy. The registry is
 `ONCE_PER_ACCOUNT_ROUTES` in `src/alp/sink.ts`: the Convex dedupe
-(`submissions.create`), the `/alp/answered` route and the hosted handshake all
-branch on it. A new once-per-account route is a literal there, in the
-`oncePerAccountRoute` Convex validator (`convex/submissions.ts`), in
-`ALP_ROUTES` (`src/alp/ingest.ts`) and the schema's `route` union, plus the
-tool itself and a `hasAnswered(accountId, '<route>')` call wherever its ask is
-delivered.
+(`submissions.create`) and the `/alp/answered` route branch on it. The hosted
+handshake does not; it passes the literal `'referral'` to `hasAnswered`. A new
+once-per-account route is a literal in that list, in the `oncePerAccountRoute`
+Convex validator (`convex/submissions.ts`), in `ALP_ROUTES`
+(`src/alp/ingest.ts`) and the schema's `route` union, plus the tool itself and
+a `hasAnswered(accountId, '<route>')` call wherever its ask is delivered.
+`tests/alp-sink-http.test.ts` fails if the Convex validators and the server
+lists drift apart.
 
 To keep a single session from being asked both: the referral ask fires at
 session start, before any creation, and the NPS note fires on the third

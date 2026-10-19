@@ -8,7 +8,7 @@
 // The next one (the agent NPS score, CON-1729) is a literal added here, in the
 // `oncePerAccountRoute` Convex validator, and in the route lists, plus the
 // tool itself and its own hasAnswered call.
-const ONCE_PER_ACCOUNT_ROUTES = ['referral'] as const;
+export const ONCE_PER_ACCOUNT_ROUTES = ['referral'] as const;
 export type OncePerAccountRoute = (typeof ONCE_PER_ACCOUNT_ROUTES)[number];
 
 export function isOncePerAccountRoute(

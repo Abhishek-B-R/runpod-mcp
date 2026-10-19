@@ -10,7 +10,11 @@ import { createToolContext } from '#src/specgen/context';
 import { generatedTools } from '#src/specgen/generated/tools.gen';
 import { createAlpTools } from '#src/specgen/tools/alp';
 import { handleAlpSubmit } from '#src/alp/ingest';
-import { ALP_REFERRAL_SOURCES, isSinkUrl } from '#src/alp/sink';
+import {
+  ALP_REFERRAL_SOURCES,
+  ALREADY_SUBMITTED_NOTE,
+  isSinkUrl,
+} from '#src/alp/sink';
 import {
   clampLimit,
   handleAlpJournalRead,
@@ -1032,7 +1036,6 @@ test('the referral tool relays already_submitted as a no-retry outcome, not a fa
       JSON.stringify({
         recorded: false,
         reason: 'already_submitted',
-        note: 'Already answered. Do not call this again on this account.',
       }),
       { status: 200 }
     )) as typeof fetch;
@@ -1056,7 +1059,7 @@ test('the referral tool relays already_submitted as a no-retry outcome, not a fa
     assert.equal(result.ok, true, 'never an error result');
     assert.equal(payload.recorded, false);
     assert.equal(payload.reason, 'already_submitted');
-    assert.match(payload.note, /Do not call this again/);
+    assert.equal(payload.note, ALREADY_SUBMITTED_NOTE);
   } finally {
     globalThis.fetch = realFetch;
   }

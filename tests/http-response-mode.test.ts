@@ -412,7 +412,7 @@ describe('mcp_request log line', () => {
 async function handshake(opts: {
   body?: unknown;
   accountId?: string;
-  answered: boolean | null;
+  answered: boolean | null | Error;
 }) {
   const calls: Array<[string, string]> = [];
   const { req, res, written, finished } = fakeReqRes(opts.body ?? init());
@@ -423,6 +423,7 @@ async function handshake(opts: {
     }),
     hasAnswered: async (identity, route) => {
       calls.push([identity, route]);
+      if (opts.answered instanceof Error) throw opts.answered;
       return opts.answered;
     },
   });
@@ -487,6 +488,15 @@ describe('the referral ask on the hosted handshake', () => {
       accountId: 'acct_3',
       answered: null,
     });
+    assert.match(instructions, PROMPT);
+  });
+
+  it('a lookup that rejects keeps the prompt and the handshake succeeds', async () => {
+    const { calls, instructions } = await handshake({
+      accountId: 'acct_5',
+      answered: new Error('sink down'),
+    });
+    assert.deepEqual(calls, [['acct_5', 'referral']]);
     assert.match(instructions, PROMPT);
   });
 

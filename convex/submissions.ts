@@ -9,7 +9,7 @@ import { v } from 'convex/values';
 // Validator twin of ONCE_PER_ACCOUNT_ROUTES (src/alp/sink.ts), which is what
 // the dedupe below and /alp/answered branch on. Convex validators are built by
 // hand, so a new once-per-account route is a literal in both places.
-const oncePerAccountRoute = v.literal('referral');
+export const oncePerAccountRoute = v.literal('referral');
 
 export const create = internalMutation({
   args: {
