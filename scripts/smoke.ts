@@ -88,69 +88,70 @@ function parseToolText(result: unknown): unknown {
   }
 }
 
-// List tools now return a `{ items, pagination }` envelope (the context-overflow
-// cap); older bare-array responses are still handled. Reduce either to the array.
-function unwrapItems(parsed: unknown): unknown {
-  if (
-    parsed &&
-    typeof parsed === 'object' &&
-    'items' in parsed &&
-    Array.isArray((parsed as { items: unknown }).items)
-  ) {
-    return (parsed as { items: unknown[] }).items;
-  }
-  return parsed;
-}
-
-function summarizeGpuTypes(result: unknown) {
-  const gpuTypes = unwrapItems(parseToolText(result));
-  if (!Array.isArray(gpuTypes)) {
-    return [];
-  }
-
-  return gpuTypes.slice(0, 3).map((gpu) => {
-    if (!gpu || typeof gpu !== 'object') {
-      return gpu;
+// A smoke call that came back as a tool error must fail the run: a summary of
+// an error payload reads as "no GPUs, no pods" and exits 0, which is how stale
+// v1 arguments went unnoticed here.
+function requireOk(name: string, result: unknown): unknown {
+  if (result && typeof result === 'object' && 'isError' in result) {
+    if ((result as { isError?: boolean }).isError) {
+      throw new Error(
+        `${name} returned a tool error: ${JSON.stringify(parseToolText(result))}`
+      );
     }
-
-    const item = gpu as Record<string, unknown>;
-    // v1/GraphQL and v2 REST use different field names for the same data:
-    //   v1: displayName / memoryGb / stockStatus
-    //   v2: name        / memory   / (secure flag, no stockStatus)
-    // Read whichever is present so the summary is non-empty on both surfaces.
-    return {
-      id: item.id,
-      displayName: item.displayName ?? item.name,
-      memoryGb: item.memoryGb ?? item.memory,
-      ...(item.stockStatus !== undefined
-        ? { stockStatus: item.stockStatus }
-        : {}),
-      ...(item.secure !== undefined ? { secure: item.secure } : {}),
-    };
-  });
+  }
+  return parseToolText(result);
 }
 
-function summarizePods(result: unknown) {
-  const pods = unwrapItems(parseToolText(result));
-  if (!Array.isArray(pods)) {
-    return { podCount: null, samplePods: [] };
+// A successful call with a drifted shape must fail the run too, or a renamed
+// key reads as "no GPUs" and exits 0. v2 list responses wrap their array under
+// a named key (list-gpu-types `{ gpus }`, list-pods `{ pods, pagination }`),
+// and every field summarized below is required by the v2 spec.
+function requireList(name: string, parsed: unknown, key: string): unknown[] {
+  const value =
+    parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, unknown>)[key]
+      : undefined;
+  if (!Array.isArray(value)) {
+    throw new Error(
+      `${name} returned no \`${key}\` array: ${JSON.stringify(parsed)}`
+    );
   }
+  return value;
+}
 
+function pickRequired(
+  name: string,
+  item: unknown,
+  fields: readonly string[]
+): Record<string, unknown> {
+  const record =
+    item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+  const missing = fields.filter((field) => record[field] === undefined);
+  if (missing.length > 0) {
+    throw new Error(
+      `${name} item is missing ${missing.join(', ')}: ${JSON.stringify(item)}`
+    );
+  }
+  return Object.fromEntries(fields.map((field) => [field, record[field]]));
+}
+
+function summarizeGpuTypes(parsed: unknown) {
+  return requireList('list-gpu-types', parsed, 'gpus')
+    .slice(0, 3)
+    .map((gpu) =>
+      pickRequired('list-gpu-types', gpu, ['id', 'name', 'memory', 'secure'])
+    );
+}
+
+function summarizePods(parsed: unknown) {
+  const pods = requireList('list-pods', parsed, 'pods');
   return {
     podCount: pods.length,
-    samplePods: pods.slice(0, 3).map((pod) => {
-      if (!pod || typeof pod !== 'object') {
-        return pod;
-      }
-
-      const item = pod as Record<string, unknown>;
-      return {
-        id: item.id,
-        name: item.name,
-        desiredStatus: item.desiredStatus,
-        imageName: item.imageName,
-      };
-    }),
+    samplePods: pods
+      .slice(0, 3)
+      .map((pod) =>
+        pickRequired('list-pods', pod, ['id', 'name', 'status', 'image'])
+      ),
   };
 }
 
@@ -167,17 +168,14 @@ async function main() {
 
     const serverVersion = client.getServerVersion();
     const tools = await client.listTools();
-    const gpuTypes = await client.callTool({
-      name: 'list-gpu-types',
-      arguments: {
-        searchTerm: 'A100',
-        includeUnavailable: false,
-      },
-    });
-    const pods = await client.callTool({
-      name: 'list-pods',
-      arguments: {},
-    });
+    const gpuTypes = requireOk(
+      'list-gpu-types',
+      await client.callTool({ name: 'list-gpu-types', arguments: {} })
+    );
+    const pods = requireOk(
+      'list-pods',
+      await client.callTool({ name: 'list-pods', arguments: {} })
+    );
 
     console.log(
       JSON.stringify(
