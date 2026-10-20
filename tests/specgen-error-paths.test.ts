@@ -418,3 +418,113 @@ test('primitive and array SDK failures retain payloads and recovery guidance thr
     }
   }
 });
+
+// undici's shape for a request that failed below HTTP: a TypeError('fetch
+// failed') whose cause carries the system or undici error code.
+function networkFailure(code: string): TypeError {
+  return new TypeError('fetch failed', {
+    cause: Object.assign(new Error(`${code} (test)`), { code }),
+  });
+}
+
+// undici's shape when the socket closes after the headers arrived: the body
+// read rejects with TypeError('terminated') whose cause carries the code.
+function respondThenTerminate(code: string): typeof fetch {
+  return async () =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"id":'));
+          controller.error(
+            new TypeError('terminated', {
+              cause: Object.assign(new Error(`${code} (test)`), { code }),
+            })
+          );
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    );
+}
+
+async function callWithFetch(
+  fetchImpl: typeof fetch,
+  call: { name: string; arguments: Record<string, unknown> }
+) {
+  const original = globalThis.fetch;
+  globalThis.fetch = fetchImpl;
+  const server = createSpecgenServer(
+    createToolContext({ apiKey: 'fake', sdkRetry: false }),
+    'test'
+  );
+  const client = new Client({ name: 'test', version: '1' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  try {
+    await Promise.all([server.connect(st), client.connect(ct)]);
+    const result = await client.callTool(call);
+    return {
+      isError: result.isError,
+      payload: JSON.parse((result.content as Array<{ text: string }>)[0].text),
+    };
+  } finally {
+    globalThis.fetch = original;
+    await client.close();
+    await server.close();
+  }
+}
+
+const networkCalls = [
+  { name: 'get-pod', arguments: { id: 'pod' } },
+  { name: 'list-endpoints', arguments: {} },
+];
+
+test('a request that never reached Runpod is a retryable tool error, not a protocol error', async () => {
+  for (const code of [
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'ECONNREFUSED',
+    'EHOSTUNREACH',
+    'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  ]) {
+    for (const call of networkCalls) {
+      const { isError, payload } = await callWithFetch(async () => {
+        throw networkFailure(code);
+      }, call);
+      assert.equal(isError, true, `${call.name} ${code}`);
+      assert.equal(payload.cause, code);
+      assert.match(payload.error, /could not reach/i);
+      assert.match(payload.hint, /never reached Runpod/);
+    }
+  }
+});
+
+test('a connection dropped mid-request warns that a write may have been applied', async () => {
+  for (const code of ['ECONNRESET', 'UND_ERR_SOCKET', 'EPIPE']) {
+    for (const call of networkCalls) {
+      const { isError, payload } = await callWithFetch(async () => {
+        throw networkFailure(code);
+      }, call);
+      assert.equal(isError, true, `${call.name} ${code}`);
+      assert.equal(payload.cause, code);
+      assert.match(payload.hint, /may have been applied/);
+      assert.doesNotMatch(payload.hint, /never reached Runpod/);
+    }
+  }
+});
+
+test('a connection dropped while reading the response body is an ambiguous tool error', async () => {
+  // A TLS code here is not a handshake failure: the headers already arrived.
+  for (const code of ['UND_ERR_SOCKET', 'ERR_TLS_CERT_ALTNAME_INVALID']) {
+    for (const call of [
+      ...networkCalls,
+      { name: 'run-endpoint', arguments: { endpointId: 'ep', input: {} } },
+    ]) {
+      const { isError, payload } = await callWithFetch(
+        respondThenTerminate(code),
+        call
+      );
+      assert.equal(isError, true, `${call.name} ${code}`);
+      assert.equal(payload.cause, code, call.name);
+      assert.match(payload.hint, /may have been applied/);
+    }
+  }
+});
