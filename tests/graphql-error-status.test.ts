@@ -34,6 +34,7 @@ test('GraphQL errors on an HTTP 200 map to a failure status from their code', as
     ['UNAUTHENTICATED', 401],
     ['UNAUTHORIZED', 403],
     ['FORBIDDEN', 403],
+    ['RUNPOD', 400],
     ['BAD_USER_INPUT', 400],
     ['INTERNAL_SERVER_ERROR', 502],
     [undefined, 502],
@@ -101,6 +102,45 @@ test('a GraphQL error on a curated tool reaches the agent with a recovery hint',
     );
     assert.match(payload.error, /Something went wrong/);
     assert.ok(payload.hint, 'expected a recovery hint on the failed call');
+  } finally {
+    await client.close();
+    await server.close();
+    globalThis.fetch = original;
+  }
+});
+
+test('a RUNPOD input error reaches the agent as a 400 with a fix-the-input hint', async () => {
+  const original = globalThis.fetch;
+  // Live saveEndpoint answer for gpuIds "NOT_A_GPU", trimmed.
+  globalThis.fetch = graphqlReply({
+    errors: [
+      {
+        message: 'Invalid GPU Pool ID: "NOT_A_GPU".',
+        path: ['saveEndpoint'],
+        extensions: { code: 'RUNPOD' },
+      },
+    ],
+    data: null,
+  });
+  const server = createSpecgenServer(
+    createToolContext({ apiKey: 'fake', sdkRetry: false }),
+    'test'
+  );
+  const client = new Client({ name: 'test', version: '1' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  try {
+    await Promise.all([server.connect(st), client.connect(ct)]);
+    const result = await client.callTool({
+      name: 'list-hub-repos',
+      arguments: {},
+    });
+    assert.equal(result.isError, true);
+    const payload = JSON.parse(
+      (result.content as Array<{ text: string }>)[0].text
+    );
+    // The shape hint is served only for a 400 or 422.
+    assert.match(payload.hint, /Input shape mismatch/);
+    assert.doesNotMatch(payload.hint, /Upstream Runpod error/);
   } finally {
     await client.close();
     await server.close();

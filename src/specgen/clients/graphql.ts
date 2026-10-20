@@ -41,6 +41,10 @@ function graphqlErrorStatus(code: unknown): number {
     case 'UNAUTHORIZED':
     case 'FORBIDDEN':
       return 403;
+    // Runpod's own code for a rejected request: an unknown GPU pool, a missing
+    // template, no balance. The caller has to change the input, so it is a 400
+    // and gets the 400 detail hints, not a retry-the-same-call 502.
+    case 'RUNPOD':
     case 'BAD_USER_INPUT':
     case 'GRAPHQL_VALIDATION_FAILED':
     case 'GRAPHQL_PARSE_FAILED':
