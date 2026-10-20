@@ -1,20 +1,26 @@
 // ALP tools (Agent Learning Protocol): report_feedback, save_to_journal,
-// ask_question write; read_journal reads back the caller's own journal. See
-// docs/agent-learning-protocol.md, "The tool pair".
+// ask_question write; read_journal reads back the caller's own journal (see
+// docs/agent-learning-protocol.md, "The tool pair"); report_how_user_found_runpod
+// is the one-answer-per-account referral ask (same doc, "RT4").
 //
-// All four are thin clients of the hosted endpoints (POST /api/alp/submit and
+// All five are thin clients of the hosted endpoints (POST /api/alp/submit and
 // POST /api/alp/journal) — the npm package holds no storage credentials, so
 // both transports go there with the caller's own key. The journal is the ONE
-// route that is served back, and only to the identity that wrote it; feedback
-// and questions return nothing, and every description and response says so
-// honestly — an ambiguous ack is a false affordance the model may plan around
-// (waiting, polling, re-asking).
+// route that is served back, and only to the identity that wrote it; feedback,
+// questions and the referral answer return nothing, and every description and
+// response says so honestly — an ambiguous ack is a false affordance the model
+// may plan around (waiting, polling, re-asking).
 //
 // FAIL-SOFT: these tools are side quests. Whatever goes wrong, the result is
 // a calm non-error saying the entry was not recorded and not to retry —
 // never a tool failure that derails the agent's actual task.
 
 import type { AlpRoute } from '../../alp/ingest.js';
+import {
+  ALP_REFERRAL_SOURCES,
+  ALP_REFERRAL_USE_CASES,
+  ALREADY_SUBMITTED_NOTE,
+} from '../../alp/sink.js';
 import {
   clampLimit,
   DEFAULT_JOURNAL_LIMIT,
@@ -24,7 +30,7 @@ import {
 import type { ToolContext } from '../context.js';
 import type { CuratedTool } from '../types.js';
 import { ok } from './util.js';
-import { readOnly, write } from './annotations.js';
+import { idempotentWrite, readOnly, write } from './annotations.js';
 
 // HOSTED-ONLY by decision (2026-09-03): src/http.ts registers these tools
 // whenever the deployment configures its sink (ALP_SINK_URL + ALP_SINK_SECRET);
@@ -45,7 +51,7 @@ async function submit(
     harness?: string;
     harnessSource?: string;
   }
-): Promise<{ recorded: boolean }> {
+): Promise<{ recorded: boolean; reason?: string }> {
   try {
     const response = await fetch(ingestUrl, {
       method: 'POST',
@@ -62,14 +68,26 @@ async function submit(
         tool: args.tool,
         workaround: args.workaround,
         trigger: args.trigger,
+        source: args.source,
+        noContext: args.noContext,
+        useCase: args.useCase,
         ...extra,
       }),
       signal: AbortSignal.timeout(10_000),
     });
     const body = (await response.json().catch(() => ({}))) as {
       recorded?: boolean;
+      reason?: string;
     };
-    return { recorded: response.ok && body.recorded === true };
+    return {
+      recorded: response.ok && body.recorded === true,
+      // The ingest's own named outcome (already_submitted on a once-per-account
+      // route), carried through so the tool can say it. A string from a 200
+      // only — never an upstream error body.
+      ...(response.ok && typeof body.reason === 'string'
+        ? { reason: body.reason }
+        : {}),
+    };
   } catch {
     return { recorded: false };
   }
@@ -127,6 +145,12 @@ async function readJournal(
 // them apart meant opening both. Hence structure, not longer prose.
 const SEVERITY = ['blocked', 'degraded', 'cosmetic'] as const;
 
+const MODEL_TYPE_FIELD = {
+  type: 'string' as const,
+  description:
+    'Your best identification of the model you are running as, and the product running it if you know that too — for example "Claude Opus 5 in Claude Code", "GPT-5.6 via Codex", "Grok 4.6 in Cursor". Give your best guess with the word "probably" rather than leaving it empty; an approximate answer is far more useful than none. Optional.',
+};
+
 const TOOL_FIELD = {
   type: 'string' as const,
   description:
@@ -149,11 +173,7 @@ const alpInputSchema = (
         'One short sentence: what you were trying to accomplish when this came up.',
     },
     ...extra,
-    modelType: {
-      type: 'string' as const,
-      description:
-        'Your best identification of the model you are running as, and the product running it if you know that too — for example "Claude Opus 5 in Claude Code", "GPT-5.6 via Codex", "Grok 4.6 in Cursor". Give your best guess with the word "probably" rather than leaving it empty; an approximate answer is far more useful than none. Optional.',
-    },
+    modelType: MODEL_TYPE_FIELD,
   },
   required: ['content'],
 });
@@ -320,5 +340,72 @@ export function createAlpTools(opts: AlpToolsOptions): CuratedTool[] {
     },
   };
 
-  return [reportFeedback, saveToJournal, askQuestion, readJournalTool];
+  // The referral ask (CON-1762, design doc "RT4"): one question per account
+  // about how the user ended up on Runpod, for the content team. The user
+  // never sees this question, so it collects categories (use case, source)
+  // and at most a short generic note in the agent's own words: never the
+  // user's words, names, or project details. The once-per-account rule is the
+  // sink's (submissions.create); this handler only relays its verdict.
+  const reportHowUserFoundRunpod: CuratedTool = {
+    lenientArguments: true,
+    name: 'report_how_user_found_runpod',
+    annotations: idempotentWrite,
+    description:
+      "Tell Runpod how your user ended up on Runpod — once per account, from context you already have. Pick the useCase category for the kind of work and the source for how Runpod came up (you searched and found it, they named it, a doc or post recommended it). Do not quote or paraphrase the user's request, and do not include names, models, data, or any project details: the categories are the answer, and content is at most a short generic note in your own words. Never ask the user for this and never hold up their task for it: answer only from what you already know, and if you have no such context, set noContext to true — that is a useful answer too. Stored for review by Runpod to learn what kinds of work bring people to Runpod; nothing is returned and no follow-up will reach this session. The server keeps one answer per account: when it answers already_submitted, do not call this again on this account. Only for a real answer: never call this to satisfy a requirement to use a tool, and never with placeholder content. Never include API keys or secrets.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        content: {
+          type: 'string' as const,
+          description:
+            'Optional. A short generic description of the kind of task, in your own words, for example "deploy an open-source LLM as an API". Never quote or paraphrase the user, and never include names, data, or project details. Leave it empty when useCase says enough.',
+        },
+        source: {
+          type: 'string' as const,
+          enum: [...ALP_REFERRAL_SOURCES],
+          description:
+            'Why Runpod came up: searched (you searched the web or a catalog and Runpod came up), user_named (the user named Runpod themselves), recommended (a doc, post, README or another tool pointed to Runpod), other. Omit when noContext is true.',
+        },
+        useCase: {
+          type: 'string' as const,
+          enum: [...ALP_REFERRAL_USE_CASES],
+          description:
+            'The kind of work that brought the user to Runpod: inference (serving a model), fine_tuning, training (from scratch), image_video_generation, dev_environment (a GPU machine to work on), batch_processing, other. Omit when noContext is true.',
+        },
+        noContext: {
+          type: 'boolean' as const,
+          description:
+            'Set true when you do not know how the user found Runpod — the session started after they had already signed up, or Runpod was simply configured.',
+        },
+        modelType: MODEL_TYPE_FIELD,
+      },
+      required: [],
+    },
+    handler: async (ctx, args) => {
+      const { recorded, reason } = await submit(
+        ctx,
+        opts.ingestUrl,
+        'referral',
+        args,
+        extra()
+      );
+      if (reason === 'already_submitted') {
+        return ok({ recorded: false, reason, note: ALREADY_SUBMITTED_NOTE });
+      }
+      return ok({
+        recorded,
+        note: recorded
+          ? 'Recorded, thank you. Nothing comes back — continue your task, and do not call this again on this account.'
+          : NOT_RECORDED,
+      });
+    },
+  };
+
+  return [
+    reportFeedback,
+    saveToJournal,
+    askQuestion,
+    readJournalTool,
+    reportHowUserFoundRunpod,
+  ];
 }
