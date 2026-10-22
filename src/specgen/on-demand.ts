@@ -59,7 +59,10 @@ export function listTool(
     return {
       name,
       title,
-      description: tool.directoryDescription ?? tool.description,
+      description: withApiReference(
+        tool.directoryDescription ?? tool.description,
+        inputSchema
+      ),
       inputSchema: withoutInputs(inputSchema, directoryOmittedInputs(name)),
       annotations,
     };
@@ -73,6 +76,20 @@ export function listTool(
     inputSchema: callShape(inputSchema),
     annotations,
   };
+}
+
+// Directory reviews ask a tool that takes a caller-built request body to name
+// the API it calls, so the directory profile appends the REST API reference to
+// every tool with a body argument.
+export const DIRECTORY_API_REFERENCE =
+  'Calls the Runpod REST API v2: https://docs.runpod.io/api-reference-v2/overview';
+
+function withApiReference(description: string, schema: Schema): string {
+  const properties = (schema.properties ?? {}) as Schema;
+  if (!('body' in properties)) return description;
+  const trimmed = description.replace(/\s*$/, '');
+  const sentence = /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  return `${sentence} ${DIRECTORY_API_REFERENCE}`;
 }
 
 function withoutInputs(schema: Schema, omit: readonly string[]): Schema {
