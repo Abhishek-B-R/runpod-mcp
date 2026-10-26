@@ -62,6 +62,10 @@ test('directory profile: no ALP, guide or describe tools, and full schemas', asy
     assert.equal(names.has(name), decision.include, `${name}: wrong surface`);
   assert.deepEqual(resources, []);
   assert.equal(instructions, DIRECTORY_INSTRUCTIONS);
+  assert.match(
+    instructions ?? '',
+    /https:\/\/docs\.runpod\.io\/api-reference-v2\/overview/
+  );
 
   // Every tool is listed with its complete schema, never a call shape, less
   // only the inputs it omits.
@@ -270,11 +274,38 @@ test('directory descriptions say what a tool does, name no other tool, and give 
   );
 });
 
-test('default profile is unchanged: original descriptions, ALP when configured', async () => {
+test('default profile keeps its tools and guards REST fallback credentials', async () => {
   const client = await connect(ALP);
   const { tools } = await client.listTools();
   const { resources } = await client.listResources();
+  const instructions = client.getInstructions();
   await client.close();
+  assert.match(
+    instructions ?? '',
+    /https:\/\/docs\.runpod\.io\/api-reference-v2\/overview/
+  );
+  assert.match(instructions ?? '', /Never read a client's credential store/);
+  assert.match(instructions ?? '', /Do not send non-GET requests/);
+  assert.match(
+    instructions ?? '',
+    /Prefer the MCP tools for reads because their results redact secret environment values/
+  );
+  assert.match(
+    instructions ?? '',
+    /do not fetch responses that may contain secret environment values/
+  );
+  assert.match(
+    instructions ?? '',
+    /never display environment values from a direct response/
+  );
+  assert.match(
+    instructions ?? '',
+    /https:\/\/api\.runpod\.io \(spec paths include \/v2\/\)/
+  );
+  assert.doesNotMatch(
+    instructions ?? '',
+    /Claude Code-credentials|\.claude\.json|mcpOAuth/
+  );
   const names = new Set(tools.map((tool) => tool.name));
   for (const kept of [
     'list-guides',
