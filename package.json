@@ -56,6 +56,16 @@
       "types": "./dist/profile.d.ts",
       "import": "./dist/profile.mjs",
       "require": "./dist/profile.cjs"
+    },
+    "./hosted": {
+      "types": "./dist/hosted.d.ts",
+      "import": "./dist/hosted.mjs",
+      "require": "./dist/hosted.cjs"
+    },
+    "./alp": {
+      "types": "./dist/alp.d.ts",
+      "import": "./dist/alp.mjs",
+      "require": "./dist/alp.cjs"
     }
   },
   "imports": {

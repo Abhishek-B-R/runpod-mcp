@@ -229,3 +229,9 @@ also no longer re-exports the legacy `registerTools` or `ToolContext`.
 
 An HTTP host that serves the directory profile can import `DIRECTORY_PATH`
 and `profileForPath` from `@runpod/mcp-server/profile`.
+
+The hosted service's own surface (the MCP request handler, the ALP submit and
+journal handlers and the knowledge search route) is `@runpod/mcp-server/hosted`.
+The ALP contract the Convex sink shares (route names, the once-per-account
+rule and the scrubber) is `@runpod/mcp-server/alp`, kept free of the HTTP
+handler so a Convex function can bundle it.
